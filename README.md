@@ -140,6 +140,20 @@ Unravel supports high-speed canvas recording:
 
 ---
 
+## 📲 Progressive Web App (PWA) & Icon Generation
+
+Unravel is fully configured as a standalone **Progressive Web App (PWA)**:
+- **Offline Shell Caching**: Core JS/CSS app shell, fonts, WebGL canvas, Draw Mode, Type Mode, and PWA icon assets are cached via `/public/sw.js` for instant offline availability.
+- **On-Brand Offline Fallback**: Custom tactile pixel-UI fallback at `/offline` when requesting uncached routes while disconnected.
+- **Parametric Icon Generator**: `scripts/generate_icons.py` renders the master 3x3 grid brand icon in Python with Pillow (`pip install Pillow`) and downsamples it into all 15 required Android adaptive (maskable), iOS Apple Touch, and browser favicon sizes.
+
+To regenerate icons after tweaking design colors or ratios in `scripts/generate_icons.py`:
+```bash
+python scripts/generate_icons.py
+```
+
+---
+
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more details.
