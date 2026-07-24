@@ -1,0 +1,55 @@
+[debug] [2026-07-24T22:25:42.316Z] ----------------------------------------------------------------------
+[debug] [2026-07-24T22:25:42.321Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\bb201\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init --account=abdulbasitbello4120@gmail.com
+[debug] [2026-07-24T22:25:42.322Z] CLI Version:   15.17.0
+[debug] [2026-07-24T22:25:42.322Z] Platform:      win32
+[debug] [2026-07-24T22:25:42.322Z] Node Version:  v24.12.0
+[debug] [2026-07-24T22:25:42.323Z] Time:          Fri Jul 24 2026 23:25:42 GMT+0100 (West Africa Standard Time)
+[debug] [2026-07-24T22:25:42.323Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  C:\Users\bb201\Desktop\unravel
+
+[info] 
+=== Account Setup
+[debug] [2026-07-24T22:25:54.228Z] setProjectAccount(C:\Users\bb201\Desktop\unravel, abdulbasitbello4120@gmail.com)
+[info] 
+[info] +  Using account: abdulbasitbello4120@gmail.com 
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-07-24T22:25:58.462Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-24T22:25:58.463Z] > authorizing via signed-in user (abdulbasitbello4120@gmail.com)
+[debug] [2026-07-24T22:25:58.464Z] No OAuth tokens found
+[debug] [2026-07-24T22:25:58.465Z] No OAuth tokens found
+[debug] [2026-07-24T22:25:58.466Z] > refreshing access token with scopes: []
+[debug] [2026-07-24T22:25:58.468Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-07-24T22:25:58.469Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-24T22:25:58.933Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-07-24T22:25:58.933Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-24T22:25:58.951Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects pageSize=100
+[debug] [2026-07-24T22:25:59.848Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects 200
+[debug] [2026-07-24T22:25:59.848Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects [omitted]
+[info] 
+=== Hosting Setup
+[info] 
+[debug] [2026-07-24T22:26:28.215Z] Checked if tokens are valid: true, expires at: 1784935557933
+[debug] [2026-07-24T22:26:28.216Z] Checked if tokens are valid: true, expires at: 1784935557933
+[debug] [2026-07-24T22:26:28.216Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/unravelart [none]
+[debug] [2026-07-24T22:26:28.947Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/unravelart 200
+[debug] [2026-07-24T22:26:28.948Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/unravelart {"projectId":"unravelart","projectNumber":"883898017235","displayName":"unravelart","name":"projects/unravelart","resources":{"hostingSite":"unravelart"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_cdb1f82f-7c37-43be-94bc-14150cbf8c55"}
+[info] 
+[info] Your public directory is the folder (relative to your project directory) that
+[info] will contain Hosting assets to be uploaded with firebase deploy. If you
+[info] have a build process for your assets, use your build's output directory.
+[info] 
