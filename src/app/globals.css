@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+:root {
+  --bg: #F7F6F2;
+  --surface: #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --ink: #1A1A1A;
+  --accent: #FF3B30;
+  --text-primary: #1A1A1A;
+  --text-secondary: #6B6B66;
+  --border: #E4E2DA;
+  
+  --font-heading: 'Press Start 2P', cursive, monospace;
+  --font-body: 'Space Mono', monospace;
+
+  --shadow-chunky: 4px 4px 0 var(--ink);
+  --shadow-chunky-sm: 2px 2px 0 var(--ink);
+  --shadow-chunky-lg: 6px 6px 0 var(--ink);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+/* Typography Utility Classes */
+.font-heading {
+  font-family: var(--font-heading);
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* CRT Scanline Overlay at 2% opacity for subtle tactile texture */
+.crt-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.05) 50%
+  );
+  background-size: 100% 4px;
+  opacity: 0.4;
+}
+
+/* Pixel Rendering Utility */
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Chunky Pixel Card / Button base styles */
+.pixel-box {
+  background: var(--surface);
+  border: 3px solid var(--ink);
+  box-shadow: var(--shadow-chunky);
+  border-radius: 0px; /* Pure crisp retro rectangle */
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.pixel-box:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-chunky-lg);
+}
+
+.pixel-box:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-chunky-sm);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ink);
+}
