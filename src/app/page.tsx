@@ -3,7 +3,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { AnimatePresence, motion } from 'framer-motion';
-import { RotateCcw, Download, Plus, Images, Square, Sparkles } from 'lucide-react';
+import { RotateCcw, Download, Plus, Images, Square, Sparkles, Check } from 'lucide-react';
+import { qualityTierManager } from '@/lib/qualityTier';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { showToast } from '@/components/ui/Toast';
 import { useAppStore } from '@/store/useAppStore';
@@ -51,6 +52,7 @@ export default function Home() {
   // Video recording & transcoding progress state
   const [isRecording, setIsRecording] = useState(false);
   const [transcodeProgress, setTranscodeProgress] = useState<number | null>(null);
+  const [transcodeSuccess, setTranscodeSuccess] = useState(false);
 
   // Global Image Paste / Drag-and-Drop state
   const [isProcessingDroppedImage, setIsProcessingDroppedImage] = useState(false);
@@ -68,7 +70,8 @@ export default function Home() {
     try {
       setIsProcessingDroppedImage(true);
       soundEngine.playUIClick();
-      const sampled = await sampleImageToGrid(file, 75);
+      const tierMax = qualityTierManager.getConfig().gridResolutionMax;
+      const sampled = await sampleImageToGrid(file, tierMax);
       setGridData(sampled, 'upload');
       announceToScreenReader('Image turned into 3D cubes');
     } catch (err) {
@@ -180,8 +183,6 @@ export default function Home() {
       setTranscodeProgress(progress);
     });
 
-    setTranscodeProgress(null);
-
     if (blob) {
       const ext = format === 'mp4' ? 'mp4' : 'webm';
       const url = URL.createObjectURL(blob);
@@ -190,7 +191,14 @@ export default function Home() {
       link.href = url;
       link.click();
       announceToScreenReader(`Video recording saved as ${ext.toUpperCase()} to downloads`);
+
+      // Briefly display a success confirmation overlay
+      setTranscodeSuccess(true);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setTranscodeSuccess(false);
     }
+
+    setTranscodeProgress(null);
   };
 
   const handleShareNative = async () => {
@@ -347,7 +355,7 @@ export default function Home() {
       )}
 
       {/* MP4 Transcode Overlay Modal */}
-      {transcodeProgress !== null && (
+      {(transcodeProgress !== null || transcodeSuccess) && (
         <div
           style={{
             position: 'fixed',
@@ -374,13 +382,29 @@ export default function Home() {
               maxWidth: '360px',
             }}
           >
-            <BrandLoader size={44} />
-            <h3 className="font-heading" style={{ fontSize: '1rem', color: 'var(--ink)' }}>
-              CONVERTING TO MP4...
-            </h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Encoding video frames. Please wait a moment.
-            </p>
+            {transcodeSuccess ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#34C759', border: '3px solid var(--ink)', borderRadius: '50%', padding: '0.5rem', color: '#FFFFFF' }}>
+                  <Check size={28} />
+                </div>
+                <h3 className="font-heading" style={{ fontSize: '1rem', color: 'var(--ink)' }}>
+                  VIDEO SAVED!
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Your recording has been saved to downloads.
+                </p>
+              </>
+            ) : (
+              <>
+                <BrandLoader size={44} />
+                <h3 className="font-heading" style={{ fontSize: '1rem', color: 'var(--ink)' }}>
+                  CONVERTING TO MP4...
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Encoding video frames. Please wait a moment.
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

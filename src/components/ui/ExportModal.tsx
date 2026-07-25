@@ -15,6 +15,8 @@ import { showToast } from '@/components/ui/Toast';
 import { announceToScreenReader } from '@/components/ui/AccessibilityAnnouncer';
 import { uploadDirectToCloudinary } from '@/lib/cloudinaryClient';
 
+import { Button } from '@/components/ui/Button';
+
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -43,6 +45,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [copiedChallenge, setCopiedChallenge] = useState(false);
   const [galleryShared, setGalleryShared] = useState(false);
   const [isCreatingChallenge, setIsCreatingChallenge] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isExportingBg, setIsExportingBg] = useState(false);
+  const [exportBgSuccess, setExportBgSuccess] = useState(false);
+  const [isExportingTrans, setIsExportingTrans] = useState(false);
+  const [exportTransSuccess, setExportTransSuccess] = useState(false);
 
   const gridData = useAppStore((state) => state.gridData);
   const isDisturbed = useAppStore((state) => state.isDisturbed);
@@ -61,9 +68,29 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     onClose();
   };
 
-  const handleChoice = (transparent: boolean) => {
+  const handleChoiceBg = async () => {
     soundEngine.playUIClick();
-    onExport({ transparent });
+    if (isExportingBg || exportBgSuccess) return;
+    setIsExportingBg(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    onExport({ transparent: false });
+    setIsExportingBg(false);
+    setExportBgSuccess(true);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    setExportBgSuccess(false);
+    onClose();
+  };
+
+  const handleChoiceTrans = async () => {
+    soundEngine.playUIClick();
+    if (isExportingTrans || exportTransSuccess) return;
+    setIsExportingTrans(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    onExport({ transparent: true });
+    setIsExportingTrans(false);
+    setExportTransSuccess(true);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    setExportTransSuccess(false);
     onClose();
   };
 
@@ -149,6 +176,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const handlePublishToGallery = async () => {
     soundEngine.playUIClick();
+    if (isPublishing) return;
+    setIsPublishing(true);
+
     try {
       const physics = (window as any).__unravelPhysics;
       const disturbed = physics ? physics.getDisturbedPositions() : [];
@@ -200,6 +230,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     } catch (err) {
       console.error('Failed to share to gallery:', err);
       showToast("Couldn't share to the gallery — check your connection", 'error');
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -272,27 +304,28 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {/* Challenge a Friend (Available when disturbed) */}
             {isDisturbed && (
-              <motion.button
+              <Button
                 onClick={handleChallengeFriend}
-                disabled={isCreatingChallenge}
+                isLoading={isCreatingChallenge}
+                isSuccess={copiedChallenge}
+                loadingText="CREATING..."
+                successText="LINK COPIED!"
                 aria-label={copiedChallenge ? 'Challenge link copied' : 'Challenge a friend with this scrambled picture'}
-                className="font-heading"
-                {...optionMotionProps}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'flex-start',
                   gap: '0.85rem',
                   padding: '0.85rem 1rem',
-                  backgroundColor: 'var(--accent)',
+                  backgroundColor: copiedChallenge ? '#34C759' : 'var(--accent)',
                   color: '#FFFFFF',
                   border: '3px solid var(--ink)',
                   boxShadow: '4px 4px 0 var(--ink)',
                   fontSize: '0.8rem',
-                  cursor: isCreatingChallenge ? 'wait' : 'pointer',
                   textAlign: 'left',
                   whiteSpace: 'normal',
                   wordBreak: 'break-word',
+                  width: '100%',
                 }}
               >
                 {copiedChallenge ? <Check size={24} style={{ flexShrink: 0 }} /> : <Share2 size={24} style={{ flexShrink: 0 }} />}
@@ -302,15 +335,17 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     Send the scrambled version for a friend to unravel
                   </div>
                 </div>
-              </motion.button>
+              </Button>
             )}
 
             {/* Share to Community Gallery (Opt-in) */}
-            <motion.button
+            <Button
               onClick={handlePublishToGallery}
+              isLoading={isPublishing}
+              isSuccess={galleryShared}
+              loadingText="SHARING..."
+              successText="SHARED!"
               aria-label={galleryShared ? 'Published to gallery' : 'Share artwork to community gallery'}
-              className="font-heading"
-              {...optionMotionProps}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -322,10 +357,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 border: '3px solid var(--ink)',
                 boxShadow: '4px 4px 0 var(--ink)',
                 fontSize: '0.8rem',
-                cursor: 'pointer',
                 textAlign: 'left',
                 whiteSpace: 'normal',
                 wordBreak: 'break-word',
+                width: '100%',
               }}
             >
               {galleryShared ? <Check size={24} style={{ flexShrink: 0 }} /> : <Users size={24} style={{ flexShrink: 0 }} />}
@@ -335,71 +370,75 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   Show your artwork in the public gallery
                 </div>
               </div>
-            </motion.button>
+            </Button>
 
             {/* Option 1: With Background */}
-            <motion.button
-              onClick={() => handleChoice(false)}
+            <Button
+              onClick={handleChoiceBg}
+              isLoading={isExportingBg}
+              isSuccess={exportBgSuccess}
+              loadingText="SAVING..."
+              successText="SAVED!"
               aria-label="Save artwork with background"
-              className="font-heading"
-              {...optionMotionProps}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-start',
                 gap: '0.85rem',
                 padding: '0.85rem 1rem',
-                backgroundColor: 'var(--surface)',
-                color: 'var(--ink)',
+                backgroundColor: exportBgSuccess ? '#34C759' : 'var(--surface)',
+                color: exportBgSuccess ? '#FFFFFF' : 'var(--ink)',
                 border: '3px solid var(--ink)',
                 boxShadow: '4px 4px 0 var(--ink)',
                 fontSize: '0.8rem',
-                cursor: 'pointer',
                 textAlign: 'left',
                 whiteSpace: 'normal',
                 wordBreak: 'break-word',
+                width: '100%',
               }}
             >
-              <ImageIcon size={24} color="var(--ink)" style={{ flexShrink: 0 }} />
+              <ImageIcon size={24} color={exportBgSuccess ? '#FFFFFF' : 'var(--ink)'} style={{ flexShrink: 0 }} />
               <div style={{ flex: '1 1 auto' }}>
                 <div>{t('WITH_BACKGROUND')}</div>
                 <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-body)', opacity: 0.8, marginTop: '0.15rem' }}>
                   Your full artwork as a PNG image
                 </div>
               </div>
-            </motion.button>
+            </Button>
 
             {/* Option 2: Transparent */}
-            <motion.button
-              onClick={() => handleChoice(true)}
+            <Button
+              onClick={handleChoiceTrans}
+              isLoading={isExportingTrans}
+              isSuccess={exportTransSuccess}
+              loadingText="SAVING..."
+              successText="SAVED!"
               aria-label="Save artwork with transparent background"
-              className="font-heading"
-              {...optionMotionProps}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-start',
                 gap: '0.85rem',
                 padding: '0.85rem 1rem',
-                backgroundColor: 'var(--surface)',
-                color: 'var(--ink)',
+                backgroundColor: exportTransSuccess ? '#34C759' : 'var(--surface)',
+                color: exportTransSuccess ? '#FFFFFF' : 'var(--ink)',
                 border: '3px solid var(--ink)',
                 boxShadow: '4px 4px 0 var(--ink)',
                 fontSize: '0.8rem',
-                cursor: 'pointer',
                 textAlign: 'left',
                 whiteSpace: 'normal',
                 wordBreak: 'break-word',
+                width: '100%',
               }}
             >
-              <Layers size={24} color="var(--ink)" style={{ flexShrink: 0 }} />
+              <Layers size={24} color={exportTransSuccess ? '#FFFFFF' : 'var(--ink)'} style={{ flexShrink: 0 }} />
               <div style={{ flex: '1 1 auto' }}>
                 <div>{t('TRANSPARENT')}</div>
                 <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-body)', opacity: 0.8, marginTop: '0.15rem' }}>
                   Just the cubes, transparent background
                 </div>
               </div>
-            </motion.button>
+            </Button>
 
             {/* Option 3: Record a Moment (Video with WEBM / MP4 Selector) */}
             {onRecordVideo && (

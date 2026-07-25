@@ -10,6 +10,7 @@ import { Wordmark } from '@/components/ui/Wordmark';
 import { MuteButton } from '@/components/ui/MuteButton';
 import { CameraModal } from '@/components/ui/CameraModal';
 import { sampleImageToGrid } from '@/lib/imageSampler';
+import { qualityTierManager } from '@/lib/qualityTier';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { t } from '@/lib/i18n/strings';
 import { showToast } from '@/components/ui/Toast';
@@ -30,7 +31,8 @@ export const UploadMode: React.FC = () => {
 
     try {
       setLoading(true);
-      const sampled = await sampleImageToGrid(file, 75);
+      const tierMax = qualityTierManager.getConfig().gridResolutionMax;
+      const sampled = await sampleImageToGrid(file, tierMax);
       setGridData(sampled, 'upload');
       announceToScreenReader('Photo converted to 3D cubes');
     } catch (err) {

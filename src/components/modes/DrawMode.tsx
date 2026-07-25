@@ -9,6 +9,7 @@ import { Wordmark } from '@/components/ui/Wordmark';
 import { MuteButton } from '@/components/ui/MuteButton';
 import { ColorPicker } from '@/components/ui/ColorPicker';
 import { sampleCanvasToGrid } from '@/lib/imageSampler';
+import { qualityTierManager } from '@/lib/qualityTier';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { t } from '@/lib/i18n/strings';
 
@@ -168,7 +169,8 @@ export const DrawMode: React.FC = () => {
   const handleConvert = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const sampled = sampleCanvasToGrid(canvas, 65);
+    const tierDraw = qualityTierManager.getConfig().gridResolutionDraw;
+    const sampled = sampleCanvasToGrid(canvas, tierDraw);
     setGridData(sampled);
   };
 

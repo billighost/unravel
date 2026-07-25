@@ -27,6 +27,7 @@ export default function GalleryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reportedMap, setReportedMap] = useState<Record<string, boolean>>({});
+  const [reportingMap, setReportingMap] = useState<Record<string, boolean>>({});
   const [thumbnailSize, setThumbnailSize] = useState({ width: 320, height: 240 });
 
   useEffect(() => {
@@ -91,10 +92,10 @@ export default function GalleryPage() {
     e.stopPropagation();
     e.preventDefault();
     soundEngine.playUIClick();
-    if (reportedMap[id]) return;
+    if (reportedMap[id] || reportingMap[id]) return;
 
     const deviceId = getDeviceId();
-    setReportedMap((prev) => ({ ...prev, [id]: true }));
+    setReportingMap((prev) => ({ ...prev, [id]: true }));
     showToast('Report submitted. Thank you!', 'success');
     announceToScreenReader('Content report submitted');
 
@@ -134,22 +135,21 @@ export default function GalleryPage() {
         },
       });
 
-      const data = await res.json();
       // If the backend didn't hide it, but we failed to send the request, handle error
       if (!res.ok) {
         throw new Error('Failed to send report');
       }
+      setReportedMap((prev) => ({ ...prev, [id]: true }));
     } catch (err) {
       console.error('Failed to report creation:', err);
-      // Revert optimistic report state on network failure
-      setReportedMap((prev) => {
+      loadGallery();
+      showToast("Report failed to send — check your connection", 'error');
+    } finally {
+      setReportingMap((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
       });
-      // Optionally reload gallery if report request failed
-      loadGallery();
-      showToast("Report failed to send — check your connection", 'error');
     }
   };
 
@@ -253,19 +253,19 @@ export default function GalleryPage() {
                     </Button>
                   </Link>
 
-                  <motion.button
+                  <Button
                     onClick={(e) => handleReport(item.id, e)}
-                    disabled={reportedMap[item.id]}
+                    isLoading={reportingMap[item.id]}
+                    isSuccess={reportedMap[item.id]}
+                    loadingText="REPORTING"
+                    successText="REPORTED"
                     aria-label={reportedMap[item.id] ? "Already reported" : "Report inappropriate content"}
-                    whileHover={!reportedMap[item.id] ? { scale: 1.05 } : undefined}
-                    whileTap={!reportedMap[item.id] ? { scale: 0.95 } : undefined}
                     style={{
                       backgroundColor: 'var(--surface)',
                       border: '2px solid var(--ink)',
                       boxShadow: '2px 2px 0 var(--ink)',
                       padding: '0.35rem 0.5rem',
                       color: reportedMap[item.id] ? '#888' : 'var(--ink)',
-                      cursor: reportedMap[item.id] ? 'default' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.25rem',
@@ -273,8 +273,8 @@ export default function GalleryPage() {
                       fontFamily: 'var(--font-heading)',
                     }}
                   >
-                    <Flag size={12} color={reportedMap[item.id] ? '#888' : 'var(--accent)'} /> {reportedMap[item.id] ? 'REPORTED' : 'REPORT'}
-                  </motion.button>
+                    <Flag size={12} color={reportedMap[item.id] ? '#888' : 'var(--accent)'} /> REPORT
+                  </Button>
                 </div>
               </motion.div>
             ))}

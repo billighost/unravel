@@ -35,6 +35,10 @@ export default function ChallengePage({ params }: ChallengePageProps) {
   const [copiedLink, setCopiedLink] = useState(false);
   const [reported, setReported] = useState(false);
   const [streakCount, setStreakCount] = useState<number | null>(null);
+  const [isChallengingBack, setIsChallengingBack] = useState(false);
+  const [isRemixing, setIsRemixing] = useState(false);
+  const [remixSuccess, setRemixSuccess] = useState(false);
+  const [isReporting, setIsReporting] = useState(false);
 
   const loadCreation = async () => {
     try {
@@ -170,13 +174,14 @@ export default function ChallengePage({ params }: ChallengePageProps) {
   const handleChallengeBack = async () => {
     soundEngine.playUIClick();
     const physics = (window as any).__unravelPhysics;
-    if (!physics || !creation) return;
+    if (!physics || !creation || isChallengingBack) return;
+    setIsChallengingBack(true);
 
     const disturbed = physics.getDisturbedPositions();
     const deviceId = getDeviceId();
-    const thumbnail = await uploadDirectToCloudinary(creation.thumbnail_url);
 
     try {
+      const thumbnail = await uploadDirectToCloudinary(creation.thumbnail_url);
       const res = await fetch('/api/creations', {
         method: 'POST',
         headers: {
@@ -198,7 +203,6 @@ export default function ChallengePage({ params }: ChallengePageProps) {
         await navigator.clipboard.writeText(fullUrl);
         setCopiedLink(true);
         soundEngine.playSuccessChime();
-        showToast('Challenge link copied to clipboard!', 'success');
         announceToScreenReader('Challenge link copied to clipboard');
         setTimeout(() => setCopiedLink(false), 3000);
       } else {
@@ -207,16 +211,19 @@ export default function ChallengePage({ params }: ChallengePageProps) {
     } catch (err) {
       console.error('Failed to create back-challenge:', err);
       showToast("Couldn't create challenge link — check your connection", 'error');
+    } finally {
+      setIsChallengingBack(false);
     }
   };
 
   const handleRemix = async () => {
     soundEngine.playUIClick();
-    if (!creation) return;
+    if (!creation || isRemixing) return;
+    setIsRemixing(true);
     const deviceId = getDeviceId();
-    const thumbnail = await uploadDirectToCloudinary(creation.thumbnail_url);
 
     try {
+      const thumbnail = await uploadDirectToCloudinary(creation.thumbnail_url);
       const res = await fetch(`/api/creations/${creation.id}/remix`, {
         method: 'POST',
         headers: {
@@ -233,7 +240,10 @@ export default function ChallengePage({ params }: ChallengePageProps) {
 
       const data = await res.json();
       if (data.id) {
+        setRemixSuccess(true);
         soundEngine.playSuccessChime();
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        setRemixSuccess(false);
         window.location.href = `/challenge/${data.id}`;
       } else {
         showToast("Couldn't remix this artwork — try again", 'error');
@@ -241,17 +251,16 @@ export default function ChallengePage({ params }: ChallengePageProps) {
     } catch (err) {
       console.error('Failed to create remix:', err);
       showToast("Couldn't remix this artwork — check your connection", 'error');
+    } finally {
+      setIsRemixing(false);
     }
   };
 
   const handleReport = async () => {
     soundEngine.playUIClick();
-    if (reported || !creation) return;
+    if (reported || isReporting || !creation) return;
+    setIsReporting(true);
     const deviceId = getDeviceId();
-
-    setReported(true);
-    showToast('Report submitted. Thank you!', 'success');
-    announceToScreenReader('Content report submitted');
 
     // Invalidate client caches immediately for this creation and gallery pages
     if (typeof window !== 'undefined' && 'caches' in window) {
@@ -286,13 +295,24 @@ export default function ChallengePage({ params }: ChallengePageProps) {
       });
       const data = await res.json();
       if (data.hidden) {
+        setReported(true);
+        showToast('Report submitted. Content hidden.', 'success');
+        announceToScreenReader('Content report submitted');
+        await new Promise((resolve) => setTimeout(resolve, 1500));
         setError('This picture is no longer available.');
         setCreation(null);
+      } else if (res.ok) {
+        setReported(true);
+        showToast('Report submitted. Thank you!', 'success');
+        announceToScreenReader('Content report submitted');
+      } else {
+        throw new Error('Report request failed');
       }
     } catch (err) {
       console.error('Failed to report creation:', err);
-      setReported(false);
       showToast("Report failed to send — check your connection", 'error');
+    } finally {
+      setIsReporting(false);
     }
   };
 
@@ -380,12 +400,13 @@ export default function ChallengePage({ params }: ChallengePageProps) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <MuteButton style={{ width: '36px', height: '36px', border: '2px solid var(--ink)', boxShadow: '2px 2px 0 var(--ink)' }} />
-            <motion.button
+            <Button
               onClick={handleReport}
-              disabled={reported}
+              isLoading={isReporting}
+              isSuccess={reported}
+              loadingText="REPORTING"
+              successText="REPORTED"
               aria-label={reported ? 'Content reported' : 'Report content'}
-              whileHover={!reported ? { scale: 1.05 } : undefined}
-              whileTap={!reported ? { scale: 0.95 } : undefined}
               style={{
                 backgroundColor: 'var(--surface)',
                 color: reported ? '#888' : 'var(--ink)',
@@ -394,11 +415,10 @@ export default function ChallengePage({ params }: ChallengePageProps) {
                 padding: '0.35rem 0.5rem',
                 fontFamily: 'var(--font-heading)',
                 fontSize: '0.65rem',
-                cursor: reported ? 'default' : 'pointer',
               }}
             >
-              {reported ? 'REPORTED' : 'REPORT'}
-            </motion.button>
+              REPORT
+            </Button>
           </div>
         </div>
 
@@ -430,12 +450,28 @@ export default function ChallengePage({ params }: ChallengePageProps) {
               animate={{ scale: 1, opacity: 1 }}
               style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'center', backgroundColor: 'var(--surface)', border: '3px solid var(--ink)', boxShadow: '4px 4px 0 var(--ink)', padding: '0.75rem 1rem', maxWidth: '95vw' }}
             >
-              <Button variant="primary" onClick={handleChallengeBack} style={{ padding: '0.5rem 0.85rem', fontSize: '0.75rem' }}>
+              <Button
+                variant="primary"
+                onClick={handleChallengeBack}
+                isLoading={isChallengingBack}
+                isSuccess={copiedLink}
+                loadingText="CREATING..."
+                successText="COPIED!"
+                style={{ padding: '0.5rem 0.85rem', fontSize: '0.75rem' }}
+              >
                 {copiedLink ? <Check size={14} /> : <Share2 size={14} />}
                 <span style={{ marginLeft: '0.25rem' }}>{copiedLink ? 'COPIED!' : 'CHALLENGE BACK'}</span>
               </Button>
 
-              <Button variant="secondary" onClick={handleRemix} style={{ padding: '0.5rem 0.85rem', fontSize: '0.75rem' }}>
+              <Button
+                variant="secondary"
+                onClick={handleRemix}
+                isLoading={isRemixing}
+                isSuccess={remixSuccess}
+                loadingText="REMIXING..."
+                successText="REMIXED!"
+                style={{ padding: '0.5rem 0.85rem', fontSize: '0.75rem' }}
+              >
                 <Sparkles size={14} /> <span style={{ marginLeft: '0.25rem' }}>REMIX</span>
               </Button>
 

@@ -627,14 +627,16 @@ export class CubePhysicsEngine {
    * Directly updates the Three.js InstancedMesh matrices and colors.
    */
   public updateInstancedMesh(mesh: THREE.InstancedMesh) {
-    const { positions, rotations, colors, totalCubes, cubeSize } = this.grid;
+    const { positions, rotations, colors, totalCubes, cubeSize, gap } = this.grid;
+    const stride = cubeSize + gap;
+    const renderedSize = stride * 1.02; // 2% overlap to prevent anti-aliasing gaps
 
     for (let i = 0; i < totalCubes; i++) {
       const i3 = i * 3;
 
       this.dummyObject.position.set(positions[i3], positions[i3 + 1], positions[i3 + 2]);
       this.dummyObject.rotation.set(rotations[i3], rotations[i3 + 1], rotations[i3 + 2]);
-      this.dummyObject.scale.setScalar(cubeSize);
+      this.dummyObject.scale.setScalar(renderedSize);
       this.dummyObject.updateMatrix();
 
       mesh.setMatrixAt(i, this.dummyObject.matrix);

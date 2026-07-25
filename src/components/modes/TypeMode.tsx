@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { MuteButton } from '@/components/ui/MuteButton';
 import { renderTextToGrid } from '@/lib/renderTextToCanvas';
+import { qualityTierManager } from '@/lib/qualityTier';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { t } from '@/lib/i18n/strings';
 
@@ -29,7 +30,8 @@ export const TypeMode: React.FC = () => {
   };
 
   const handleConvert = () => {
-    const sampled = renderTextToGrid(text || 'UNRAVEL', 70, 35);
+    const tierType = qualityTierManager.getConfig().gridResolutionType;
+    const sampled = renderTextToGrid(text || 'UNRAVEL', tierType, Math.round(tierType * 0.5));
     setGridData(sampled);
   };
 

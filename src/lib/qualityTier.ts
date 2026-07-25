@@ -14,6 +14,8 @@ export interface QualityConfig {
   antialias: boolean;
   shadows: boolean;
   gridResolutionMax: number;
+  gridResolutionDraw: number;
+  gridResolutionType: number;
   particlePoolSize: number;
   particleMaxSpawnsPerFrame: number;
   restSpeedThreshold: number;
@@ -26,7 +28,9 @@ const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
     maxPixelRatio: 2.5,
     antialias: true,
     shadows: true,
-    gridResolutionMax: 100,
+    gridResolutionMax: 160,
+    gridResolutionDraw: 100,
+    gridResolutionType: 90,
     particlePoolSize: 150,
     particleMaxSpawnsPerFrame: 4,
     restSpeedThreshold: 0.02,
@@ -37,7 +41,9 @@ const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
     maxPixelRatio: 1.75,
     antialias: true,
     shadows: false,
-    gridResolutionMax: 70,
+    gridResolutionMax: 100,
+    gridResolutionDraw: 75,
+    gridResolutionType: 65,
     particlePoolSize: 80,
     particleMaxSpawnsPerFrame: 2,
     restSpeedThreshold: 0.04,
@@ -48,7 +54,9 @@ const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
     maxPixelRatio: 1.0,
     antialias: false,
     shadows: false,
-    gridResolutionMax: 45,
+    gridResolutionMax: 60,
+    gridResolutionDraw: 50,
+    gridResolutionType: 45,
     particlePoolSize: 30,
     particleMaxSpawnsPerFrame: 1,
     restSpeedThreshold: 0.07,
