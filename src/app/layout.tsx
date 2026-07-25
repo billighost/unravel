@@ -43,7 +43,9 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              if ((location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') && 'serviceWorker' in navigator) {
+              const urlParams = new URLSearchParams(window.location.search);
+              const forceSW = urlParams.get('sw') === 'true';
+              if ((forceSW || (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1')) && 'serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js').catch(function(err) {
                     console.log('SW registration failed: ', err);

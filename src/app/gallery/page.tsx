@@ -3,13 +3,16 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Flag, Eye, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Flag, Eye, AlertTriangle, RefreshCw } from 'lucide-react';
+import { BrandIcon } from '@/components/ui/BrandIcon';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { Button } from '@/components/ui/Button';
 import { getDeviceId } from '@/lib/deviceId';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { showToast } from '@/components/ui/Toast';
 import { announceToScreenReader } from '@/components/ui/AccessibilityAnnouncer';
+import { getOptimizedCloudinaryUrl } from '@/lib/cloudinaryClient';
 
 interface CreationItem {
   id: string;
@@ -24,6 +27,15 @@ export default function GalleryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reportedMap, setReportedMap] = useState<Record<string, boolean>>({});
+  const [thumbnailSize, setThumbnailSize] = useState({ width: 320, height: 240 });
+
+  useEffect(() => {
+    const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 3) : 1;
+    setThumbnailSize({
+      width: Math.round(320 * dpr),
+      height: Math.round(240 * dpr),
+    });
+  }, []);
 
   const loadGallery = async () => {
     try {
@@ -49,6 +61,30 @@ export default function GalleryPage() {
 
   useEffect(() => {
     loadGallery();
+
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'API_CACHE_UPDATED') {
+        try {
+          const url = new URL(event.data.url, window.location.origin);
+          if (url.pathname.startsWith('/api/gallery')) {
+            const freshItems = event.data.data.items || [];
+            setItems(freshItems);
+          }
+        } catch (e) {
+          console.error('Error handling SW message:', e);
+        }
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    }
+
+    return () => {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+      }
+    };
   }, []);
 
   const handleReport = async (id: string, e: React.MouseEvent) => {
@@ -62,6 +98,33 @@ export default function GalleryPage() {
     showToast('Report submitted. Thank you!', 'success');
     announceToScreenReader('Content report submitted');
 
+    // Optimistically remove from UI
+    setItems((prev) => prev.filter((item) => item.id !== id));
+
+    // Proactively invalidate client caches for this creation and the gallery API responses
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        const apiCache = await caches.open('unravel-api-cache');
+        const apiKeys = await apiCache.keys();
+        for (const key of apiKeys) {
+          if (key.url.includes(`/api/creations/${id}`)) {
+            await apiCache.delete(key);
+          }
+          if (key.url.includes('/api/gallery')) {
+            await apiCache.delete(key);
+          }
+        }
+
+        const mediaCache = await caches.open('unravel-media-cache');
+        const itemToReport = items.find((item) => item.id === id);
+        if (itemToReport && itemToReport.thumbnail_url) {
+          await mediaCache.delete(itemToReport.thumbnail_url);
+        }
+      } catch (err) {
+        console.warn('Failed to invalidate client caches on report:', err);
+      }
+    }
+
     try {
       const res = await fetch(`/api/creations/${id}/report`, {
         method: 'POST',
@@ -72,8 +135,9 @@ export default function GalleryPage() {
       });
 
       const data = await res.json();
-      if (data.hidden) {
-        setItems((prev) => prev.filter((item) => item.id !== id));
+      // If the backend didn't hide it, but we failed to send the request, handle error
+      if (!res.ok) {
+        throw new Error('Failed to send report');
       }
     } catch (err) {
       console.error('Failed to report creation:', err);
@@ -83,6 +147,8 @@ export default function GalleryPage() {
         delete next[id];
         return next;
       });
+      // Optionally reload gallery if report request failed
+      loadGallery();
       showToast("Report failed to send — check your connection", 'error');
     }
   };
@@ -115,7 +181,7 @@ export default function GalleryPage() {
         {/* Gallery Grid States */}
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 1rem', gap: '1rem' }}>
-            <Loader2 size={36} className="animate-spin" color="var(--accent)" />
+            <BrandLoader size={40} />
             <p className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>LOADING GALLERY...</p>
           </div>
         ) : error ? (
@@ -129,7 +195,7 @@ export default function GalleryPage() {
           </div>
         ) : items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem', backgroundColor: 'var(--surface)', border: '4px solid var(--ink)', boxShadow: '4px 4px 0 var(--ink)' }}>
-            <AlertTriangle size={32} color="var(--accent)" style={{ margin: '0 auto 1rem' }} />
+            <BrandIcon size={64} style={{ margin: '0 auto 1.25rem', opacity: 0.7 }} />
             <h3 className="font-heading" style={{ fontSize: '1rem' }}>NO PUBLIC CREATIONS</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
               Be the first to share your artwork to the public community gallery!
@@ -162,8 +228,9 @@ export default function GalleryPage() {
                   <div style={{ aspectRatio: '4/3', width: '100%', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
                     {item.thumbnail_url ? (
                       <img
-                        src={item.thumbnail_url}
+                        src={getOptimizedCloudinaryUrl(item.thumbnail_url, thumbnailSize.width, thumbnailSize.height)}
                         alt="Creation thumbnail"
+                        crossOrigin="anonymous"
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     ) : (

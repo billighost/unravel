@@ -107,7 +107,7 @@ export const TypeMode: React.FC = () => {
           />
 
           <p style={{ color: 'var(--text-secondary)', fontSize: 'min(0.85rem, 3.5vw)' }}>
-            {text.length <= 12 ? 'Chunky pixel font' : 'Clean mono font'}
+            {text.length <= 12 ? 'Retro pixel font' : 'Clean mono font'}
           </p>
         </div>
 

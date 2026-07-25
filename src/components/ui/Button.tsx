@@ -42,6 +42,7 @@ export const Button: React.FC<ButtonProps> = ({
         border: '3px solid var(--ink)',
         boxShadow: isPrimary ? '4px 4px 0 var(--ink)' : '4px 4px 0 var(--ink)',
         fontFamily: 'var(--font-heading)',
+        fontWeight: 600,
         fontSize: '0.9rem',
         cursor: 'pointer',
         userSelect: 'none',

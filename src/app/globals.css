@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&family=Press+Start+2P&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
 
 :root {
   --bg: #F7F6F2;
@@ -10,7 +10,8 @@
   --text-secondary: #6B6B66;
   --border: #E4E2DA;
   
-  --font-heading: 'Press Start 2P', cursive, monospace;
+  --font-logo: 'Press Start 2P', cursive, monospace;
+  --font-heading: 'Pixelify Sans', 'Press Start 2P', cursive, sans-serif;
   --font-body: 'Space Mono', monospace;
 
   --shadow-chunky: 4px 4px 0 var(--ink);
@@ -39,8 +40,9 @@ html, body {
 /* Typography Utility Classes */
 .font-heading {
   font-family: var(--font-heading);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.02em;
 }
 
 .font-body {
@@ -136,6 +138,18 @@ input:focus-visible {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes loose-cube-bounce {
+  0% {
+    transform: translate(46px, 46px) rotate(-14deg);
+  }
+  50% {
+    transform: translate(96px, 96px) rotate(-35deg);
+  }
+  100% {
+    transform: translate(46px, 46px) rotate(-14deg);
+  }
 }
 
 /* Mobile responsive utility to hide text and show icons only */

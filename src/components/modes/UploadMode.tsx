@@ -2,7 +2,8 @@
 
 import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { UploadCloud, Camera, ArrowLeft, Loader2 } from 'lucide-react';
+import { UploadCloud, Camera, ArrowLeft } from 'lucide-react';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/Button';
 import { Wordmark } from '@/components/ui/Wordmark';
@@ -132,7 +133,7 @@ export const UploadMode: React.FC = () => {
               gap: '1rem',
             }}
           >
-            <Loader2 size={36} className="animate-spin" color="var(--accent)" />
+            <BrandLoader size={44} />
             <p className="font-heading" style={{ fontSize: '0.8rem' }}>
               PIXELATING...
             </p>

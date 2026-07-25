@@ -4,7 +4,8 @@ import React, { useEffect, useState, use } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, Share2, Sparkles, AlertTriangle, Check, Flame, Loader2, RefreshCw } from 'lucide-react';
+import { RotateCcw, Share2, Sparkles, AlertTriangle, Check, Flame, RefreshCw } from 'lucide-react';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { Button } from '@/components/ui/Button';
 import { MuteButton } from '@/components/ui/MuteButton';
@@ -80,6 +81,36 @@ export default function ChallengePage({ params }: ChallengePageProps) {
 
   useEffect(() => {
     loadCreation();
+
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'API_CACHE_UPDATED') {
+        try {
+          const url = new URL(event.data.url, window.location.origin);
+          if (url.pathname === `/api/creations/${id}`) {
+            const data = event.data.data;
+            if (data.is_hidden || data.error) {
+              setError(data.error || 'This picture is no longer available.');
+              setCreation(null);
+            } else if (data.creation) {
+              setCreation(data.creation);
+              setError(null);
+            }
+          }
+        } catch (e) {
+          console.error('Error handling SW message in challenge page:', e);
+        }
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    }
+
+    return () => {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+      }
+    };
   }, [id]);
 
   // Set up canvas initialization with disturbed positions when canvas mounts
@@ -222,6 +253,29 @@ export default function ChallengePage({ params }: ChallengePageProps) {
     showToast('Report submitted. Thank you!', 'success');
     announceToScreenReader('Content report submitted');
 
+    // Invalidate client caches immediately for this creation and gallery pages
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        const apiCache = await caches.open('unravel-api-cache');
+        const apiKeys = await apiCache.keys();
+        for (const key of apiKeys) {
+          if (key.url.includes(`/api/creations/${creation.id}`)) {
+            await apiCache.delete(key);
+          }
+          if (key.url.includes('/api/gallery')) {
+            await apiCache.delete(key);
+          }
+        }
+
+        const mediaCache = await caches.open('unravel-media-cache');
+        if (creation.thumbnail_url) {
+          await mediaCache.delete(creation.thumbnail_url);
+        }
+      } catch (err) {
+        console.warn('Failed to invalidate client caches on report:', err);
+      }
+    }
+
     try {
       const res = await fetch(`/api/creations/${creation.id}/report`, {
         method: 'POST',
@@ -233,6 +287,7 @@ export default function ChallengePage({ params }: ChallengePageProps) {
       const data = await res.json();
       if (data.hidden) {
         setError('This picture is no longer available.');
+        setCreation(null);
       }
     } catch (err) {
       console.error('Failed to report creation:', err);
@@ -244,7 +299,7 @@ export default function ChallengePage({ params }: ChallengePageProps) {
   if (loading) {
     return (
       <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg)', gap: '1rem' }}>
-        <Loader2 size={44} className="animate-spin" color="var(--accent)" />
+        <BrandLoader size={44} />
         <p className="font-heading" style={{ fontSize: '1rem', color: 'var(--ink)' }}>LOADING PICTURE...</p>
       </div>
     );

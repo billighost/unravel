@@ -75,6 +75,78 @@ def draw_master(padding_scale: float = 1.0) -> Image.Image:
     return img
 
 
+def draw_master_transparent(cubes_color, loose_color, padding_scale: float = 1.0) -> Image.Image:
+    """
+    Draws the master icon on a transparent background with custom colors.
+    """
+    img = Image.new("RGBA", (MASTER_SIZE, MASTER_SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    cell = int(200 * padding_scale)
+    gap = int(40 * padding_scale)
+    radius = int(28 * padding_scale)
+    grid_w = cell * 3 + gap * 2
+    start_x = (MASTER_SIZE - grid_w) // 2
+    start_y = (MASTER_SIZE - grid_w) // 2
+
+    loose_row, loose_col = 2, 2
+
+    for row in range(3):
+        for col in range(3):
+            x0 = start_x + col * (cell + gap)
+            y0 = start_y + row * (cell + gap)
+            x1, y1 = x0 + cell, y0 + cell
+
+            if (row, col) == (loose_row, loose_col):
+                continue
+            draw.rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=cubes_color)
+
+    loose_layer = Image.new("RGBA", (MASTER_SIZE, MASTER_SIZE), (0, 0, 0, 0))
+    loose_draw = ImageDraw.Draw(loose_layer)
+    lx0 = start_x + loose_col * (cell + gap)
+    ly0 = start_y + loose_row * (cell + gap)
+    loose_draw.rounded_rectangle(
+        [lx0, ly0, lx0 + cell, ly0 + cell], radius=radius, fill=loose_color
+    )
+    rotated = loose_layer.rotate(-14, resample=Image.BICUBIC, center=(lx0 + cell / 2, ly0 + cell / 2))
+
+    offset = int(46 * padding_scale)
+    shifted = Image.new("RGBA", (MASTER_SIZE, MASTER_SIZE), (0, 0, 0, 0))
+    shifted.paste(rotated, (offset, offset), rotated)
+
+    img = Image.alpha_composite(img, shifted)
+    return img
+
+
+def draw_loose_cube_only(loose_color, padding_scale: float = 1.0) -> Image.Image:
+    """
+    Draws only the loose red accent cube on a transparent background.
+    """
+    img = Image.new("RGBA", (MASTER_SIZE, MASTER_SIZE), (0, 0, 0, 0))
+    cell = int(200 * padding_scale)
+    gap = int(40 * padding_scale)
+    radius = int(28 * padding_scale)
+    grid_w = cell * 3 + gap * 2
+    start_x = (MASTER_SIZE - grid_w) // 2
+    start_y = (MASTER_SIZE - grid_w) // 2
+
+    loose_row, loose_col = 2, 2
+
+    loose_layer = Image.new("RGBA", (MASTER_SIZE, MASTER_SIZE), (0, 0, 0, 0))
+    loose_draw = ImageDraw.Draw(loose_layer)
+    lx0 = start_x + loose_col * (cell + gap)
+    ly0 = start_y + loose_row * (cell + gap)
+    loose_draw.rounded_rectangle(
+        [lx0, ly0, lx0 + cell, ly0 + cell], radius=radius, fill=loose_color
+    )
+    rotated = loose_layer.rotate(-14, resample=Image.BICUBIC, center=(lx0 + cell / 2, ly0 + cell / 2))
+
+    offset = int(46 * padding_scale)
+    shifted = Image.new("RGBA", (MASTER_SIZE, MASTER_SIZE), (0, 0, 0, 0))
+    shifted.paste(rotated, (offset, offset), rotated)
+    return shifted
+
+
 def save_png(img: Image.Image, size: int, path: str):
     resized = img.resize((size, size), Image.LANCZOS)
     resized.save(path, format="PNG")
@@ -118,6 +190,18 @@ def main():
     # --- Reference full-res master, in case the design needs further edits ---
     master_standard.save(f"{OUT_DIR}/icon-master-1024.png", format="PNG")
     print(f"\n  wrote {OUT_DIR}/icon-master-1024.png (reference/edit source)")
+
+    # --- Additional UI variants (transparent, monochrome, loose cube) ---
+    print("\nGenerating new UI variants...")
+    master_transparent = draw_master_transparent(OFFWHITE, ACCENT, padding_scale=1.0)
+    master_dark_transparent = draw_master_transparent(INK, ACCENT, padding_scale=1.0)
+    master_monochrome = draw_master_transparent(INK, INK, padding_scale=1.0)
+    master_loose_cube = draw_loose_cube_only(ACCENT, padding_scale=1.0)
+
+    save_png(master_transparent, 512, f"{OUT_DIR}/brand-icon-transparent.png")
+    save_png(master_dark_transparent, 512, f"{OUT_DIR}/brand-icon-dark-transparent.png")
+    save_png(master_monochrome, 512, f"{OUT_DIR}/brand-icon-monochrome.png")
+    save_png(master_loose_cube, 512, f"{OUT_DIR}/brand-icon-loose-cube.png")
 
     print("\nDone.")
 

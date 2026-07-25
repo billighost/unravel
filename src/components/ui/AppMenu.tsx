@@ -186,7 +186,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
         >
           <Flame size={18} fill="var(--accent)" />
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span className="font-heading" style={{ fontSize: '0.65rem' }}>
+            <span className="font-heading" style={{ fontSize: '0.75rem' }}>
               STREAK ACTIVE!
             </span>
             <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-body)', fontWeight: 'bold' }}>
@@ -215,7 +215,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
           }}
         >
           <Sparkles size={18} color="var(--accent)" />
-          <span className="font-heading" style={{ fontSize: '0.7rem', color: 'var(--ink)' }}>
+          <span className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
             {loadingChallenge ? 'LOADING...' : "TODAY'S PICTURE"}
           </span>
         </button>
@@ -236,7 +236,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
           }}
         >
           <Images size={18} color="var(--ink)" />
-          <span className="font-heading" style={{ fontSize: '0.7rem', color: 'var(--ink)' }}>
+          <span className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
             HISTORY GALLERY
           </span>
         </button>
@@ -261,7 +261,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
             }}
           >
             <Images size={18} color="var(--ink)" />
-            <span className="font-heading" style={{ fontSize: '0.7rem', color: 'var(--ink)' }}>
+            <span className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
               PUBLIC GALLERY
             </span>
           </button>
@@ -284,11 +284,11 @@ export const AppMenu: React.FC<AppMenuProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             {muted ? <VolumeX size={18} color="var(--text-secondary)" /> : <Volume2 size={18} color="var(--ink)" />}
-            <span className="font-heading" style={{ fontSize: '0.7rem', color: 'var(--ink)' }}>
+            <span className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
               SOUNDS
             </span>
           </div>
-          <span style={{ fontSize: '0.7rem', color: muted ? 'var(--text-secondary)' : 'var(--accent)', fontWeight: 'bold' }}>
+          <span style={{ fontSize: '0.8rem', color: muted ? 'var(--text-secondary)' : 'var(--accent)', fontWeight: 'bold' }}>
             {muted ? 'OFF' : 'ON'}
           </span>
         </button>
@@ -310,7 +310,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
             }}
           >
             <Plus size={18} color="var(--ink)" />
-            <span className="font-heading" style={{ fontSize: '0.7rem', color: 'var(--ink)' }}>
+            <span className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
               NEW ARTWORK
             </span>
           </button>
@@ -322,7 +322,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
         <div
           className="font-heading"
           style={{
-            fontSize: '0.6rem',
+            fontSize: '0.72rem',
             color: 'var(--text-secondary)',
             marginBottom: '0.4rem',
             paddingLeft: '0.1rem',
@@ -348,7 +348,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
                   backgroundColor: isSelected ? 'var(--ink)' : 'var(--surface)',
                   color: isSelected ? '#FFFFFF' : 'var(--ink)',
                   border: '2px solid var(--ink)',
-                  fontSize: '0.65rem',
+                  fontSize: '0.78rem',
                   fontFamily: 'var(--font-heading)',
                   cursor: 'pointer',
                   textAlign: 'center',

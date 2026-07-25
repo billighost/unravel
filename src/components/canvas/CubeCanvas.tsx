@@ -8,7 +8,67 @@ import { soundEngine } from '@/lib/audio/soundEngine';
 import { ImpactParticleSystem } from '@/lib/impactParticles';
 import { uiObstacleManager } from '@/lib/uiObstacles';
 import { qualityTierManager, QualityConfig } from '@/lib/qualityTier';
-import { Loader2 } from 'lucide-react';
+import { BrandLoader } from '@/components/ui/BrandLoader';
+
+function drawBrandIconToCanvas(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  looseColor: string
+) {
+  ctx.save();
+  const scale = size / 1024;
+  const cell = 200 * scale;
+  const gap = 40 * scale;
+  const rx = 28 * scale;
+  
+  const startX = x + (size - (cell * 3 + gap * 2)) / 2;
+  const startY = y + (size - (cell * 3 + gap * 2)) / 2;
+
+  const roundedRect = (rx0: number, ry0: number, rw: number, rh: number, r: number) => {
+    ctx.beginPath();
+    ctx.moveTo(rx0 + r, ry0);
+    ctx.lineTo(rx0 + rw - r, ry0);
+    ctx.quadraticCurveTo(rx0 + rw, ry0, rx0 + rw, ry0 + r);
+    ctx.lineTo(rx0 + rw, ry0 + rh - r);
+    ctx.quadraticCurveTo(rx0 + rw, ry0 + rh, rx0 + rw - r, ry0 + rh);
+    ctx.lineTo(rx0 + r, ry0 + rh);
+    ctx.quadraticCurveTo(rx0, ry0 + rh, rx0, ry0 + rh - r);
+    ctx.lineTo(rx0, ry0 + r);
+    ctx.quadraticCurveTo(rx0, ry0, rx0 + r, ry0);
+    ctx.closePath();
+    ctx.fill();
+  };
+
+  ctx.fillStyle = color;
+
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      if (row === 2 && col === 2) continue;
+      const lx = startX + col * (cell + gap);
+      const ly = startY + row * (cell + gap);
+      roundedRect(lx, ly, cell, cell, rx);
+    }
+  }
+
+  ctx.save();
+  const lCenterX = startX + 2 * (cell + gap) + cell / 2;
+  const lCenterY = startY + 2 * (cell + gap) + cell / 2;
+  const offset = 46 * scale;
+  ctx.translate(lCenterX + offset, lCenterY + offset);
+  ctx.rotate(-14 * Math.PI / 180);
+  ctx.translate(-lCenterX, -lCenterY);
+
+  ctx.fillStyle = looseColor;
+  const lx0 = startX + 2 * (cell + gap);
+  const ly0 = startY + 2 * (cell + gap);
+  roundedRect(lx0, ly0, cell, cell, rx);
+
+  ctx.restore();
+  ctx.restore();
+}
 
 interface CubeCanvasProps {
   onExportReady?: (exportFn: (options?: { transparent?: boolean }) => void) => void;
@@ -237,13 +297,30 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
 
           // Draw bottom-right Watermark & Chaos Stat Overlay
           ctx.save();
-          ctx.font = `900 ${fontSize}px var(--font-heading), monospace, sans-serif`;
+          ctx.font = `700 ${fontSize}px "Pixelify Sans", monospace, sans-serif`;
           ctx.textAlign = 'right';
           ctx.textBaseline = 'bottom';
 
           const textMargin = fontSize;
           const textLine1 = chaos > 0 ? `${chaos}% DISTURBED` : 'PRISTINE ART';
           const textLine2 = 'UNRAVEL • unravel.app';
+
+          // Measure textLine2 to place the icon to the left of it
+          const textLine2Width = ctx.measureText(textLine2).width;
+          const iconSize = fontSize * 0.95;
+          const iconGap = fontSize * 0.4;
+          const iconX = exportCanvas.width - textMargin - textLine2Width - iconSize - iconGap;
+          const iconY = exportCanvas.height - textMargin - iconSize + (fontSize * 0.05);
+
+          // Shadow for brand icon
+          ctx.save();
+          drawBrandIconToCanvas(ctx, iconX + 2, iconY + 2, iconSize, 'rgba(0, 0, 0, 0.7)', 'rgba(0, 0, 0, 0.7)');
+          ctx.restore();
+
+          // Foreground for brand icon
+          ctx.save();
+          drawBrandIconToCanvas(ctx, iconX, iconY, iconSize, '#FFFFFF', '#FF5252');
+          ctx.restore();
 
           // Shadow for pixel aesthetic legibility
           ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -537,7 +614,7 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
             gap: '1rem',
           }}
         >
-          <Loader2 size={40} className="animate-spin" color="var(--accent)" />
+          <BrandLoader size={40} />
           <p className="font-heading" style={{ fontSize: '0.9rem', color: 'var(--ink)' }}>
             RECONNECTING WEBGL...
           </p>

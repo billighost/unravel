@@ -38,8 +38,8 @@ export function renderTextToGrid(
   ctx.fillRect(0, 0, scratchW, scratchH);
 
   const charCount = cleanText.length;
-  // Font selection: Press Start 2P for shorter text, Space Mono for longer text
-  const fontFamily = charCount <= 12 ? '"Press Start 2P", monospace' : '"Space Mono", monospace';
+  // Font selection: Pixelify Sans for shorter text, Space Mono for longer text
+  const fontFamily = charCount <= 12 ? '"Pixelify Sans", monospace' : '"Space Mono", monospace';
 
   // Internal padding (10% on each side)
   const paddingX = scratchW * 0.1;
@@ -48,7 +48,7 @@ export function renderTextToGrid(
 
   // Calculate dynamic font size to fill available space nicely
   let testFontSize = 100;
-  ctx.font = `900 ${testFontSize}px ${fontFamily}`;
+  ctx.font = `700 ${testFontSize}px ${fontFamily}`;
   let textMetrics = ctx.measureText(cleanText);
   let textW = textMetrics.width;
 
@@ -58,7 +58,7 @@ export function renderTextToGrid(
   const fontScale = Math.min(scaleW, scaleH);
 
   const finalFontSize = Math.floor(testFontSize * fontScale);
-  ctx.font = `900 ${finalFontSize}px ${fontFamily}`;
+  ctx.font = `700 ${finalFontSize}px ${fontFamily}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#1A1A1A';

@@ -112,6 +112,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
       const data = await res.json();
       if (data.shareUrl) {
+        // Invalidate cached gallery requests
+        if (typeof window !== 'undefined' && 'caches' in window) {
+          try {
+            const apiCache = await caches.open('unravel-api-cache');
+            const apiKeys = await apiCache.keys();
+            for (const key of apiKeys) {
+              if (key.url.includes('/api/gallery')) {
+                await apiCache.delete(key);
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to invalidate client caches on challenge back:', err);
+          }
+        }
+
         const fullUrl = `${window.location.origin}${data.shareUrl}`;
         await navigator.clipboard.writeText(fullUrl);
         setCopiedChallenge(true);
@@ -157,6 +172,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       });
 
       if (res.ok) {
+        // Invalidate cached gallery requests so the newly published creation appears
+        if (typeof window !== 'undefined' && 'caches' in window) {
+          try {
+            const apiCache = await caches.open('unravel-api-cache');
+            const apiKeys = await apiCache.keys();
+            for (const key of apiKeys) {
+              if (key.url.includes('/api/gallery')) {
+                await apiCache.delete(key);
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to invalidate client caches on publish:', err);
+          }
+        }
+
         setGalleryShared(true);
         soundEngine.playSuccessChime();
         announceToScreenReader('Artwork shared to the community gallery');

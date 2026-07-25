@@ -3,7 +3,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { AnimatePresence, motion } from 'framer-motion';
-import { RotateCcw, Download, Plus, Images, Square, Sparkles, Loader2 } from 'lucide-react';
+import { RotateCcw, Download, Plus, Images, Square, Sparkles } from 'lucide-react';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { showToast } from '@/components/ui/Toast';
 import { useAppStore } from '@/store/useAppStore';
 import { Wordmark } from '@/components/ui/Wordmark';
@@ -338,7 +339,7 @@ export default function Home() {
             gap: '1rem',
           }}
         >
-          <Loader2 size={48} className="animate-spin" color="var(--accent)" />
+          <BrandLoader size={48} />
           <p className="font-heading" style={{ fontSize: '1rem', color: 'var(--ink)' }}>
             PIXELATING IMAGE...
           </p>
@@ -373,7 +374,7 @@ export default function Home() {
               maxWidth: '360px',
             }}
           >
-            <Loader2 size={36} className="animate-spin" color="var(--accent)" />
+            <BrandLoader size={44} />
             <h3 className="font-heading" style={{ fontSize: '1rem', color: 'var(--ink)' }}>
               CONVERTING TO MP4...
             </h3>

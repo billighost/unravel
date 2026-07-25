@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Images, X, Trash2 } from 'lucide-react';
 import { getGalleryItems, deleteGalleryItem, GalleryItem, SavedGridData } from '@/lib/storage';
+import { BrandIcon } from '@/components/ui/BrandIcon';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { t } from '@/lib/i18n/strings';
 
@@ -123,8 +124,11 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
               Loading gallery...
             </div>
           ) : items.length === 0 ? (
-            <div style={{ padding: '2rem 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.75rem', wordBreak: 'break-word' }}>
-              No saved creations yet. Turn an image, sketch, or text into cubes to save it here!
+            <div style={{ padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.75rem', wordBreak: 'break-word' }}>
+              <BrandIcon size={64} style={{ opacity: 0.65 }} />
+              <p style={{ maxWidth: '280px' }}>
+                No saved creations yet. Turn an image, sketch, or text into cubes to save it here!
+              </p>
             </div>
           ) : (
             <div
