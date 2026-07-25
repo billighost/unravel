@@ -23,22 +23,22 @@ export interface QualityConfig {
 const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
   high: {
     tier: 'high',
-    maxPixelRatio: 2.0,
+    maxPixelRatio: 2.5,
     antialias: true,
     shadows: true,
-    gridResolutionMax: 80,
-    particlePoolSize: 120,
-    particleMaxSpawnsPerFrame: 3,
+    gridResolutionMax: 100,
+    particlePoolSize: 150,
+    particleMaxSpawnsPerFrame: 4,
     restSpeedThreshold: 0.02,
     transcodeFallbackAllowed: true,
   },
   medium: {
     tier: 'medium',
-    maxPixelRatio: 1.5,
+    maxPixelRatio: 1.75,
     antialias: true,
     shadows: false,
-    gridResolutionMax: 60,
-    particlePoolSize: 60,
+    gridResolutionMax: 70,
+    particlePoolSize: 80,
     particleMaxSpawnsPerFrame: 2,
     restSpeedThreshold: 0.04,
     transcodeFallbackAllowed: true,
@@ -48,8 +48,8 @@ const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
     maxPixelRatio: 1.0,
     antialias: false,
     shadows: false,
-    gridResolutionMax: 40,
-    particlePoolSize: 20,
+    gridResolutionMax: 45,
+    particlePoolSize: 30,
     particleMaxSpawnsPerFrame: 1,
     restSpeedThreshold: 0.07,
     transcodeFallbackAllowed: false,
@@ -58,6 +58,7 @@ const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
 
 class QualityTierManager {
   private currentTier: QualityTier = 'high';
+  private isManual: boolean = false;
   private listeners: Set<(config: QualityConfig) => void> = new Set();
   private probeCompleted: boolean = false;
 
@@ -67,23 +68,33 @@ class QualityTierManager {
     }
   }
 
+  public getIsManual(): boolean {
+    return this.isManual;
+  }
+
   /**
-   * Performs initial static capability inspection (cores, RAM, user-agent, localStorage).
+   * Performs initial static capability inspection or loads saved manual choice.
    */
   private detectInitialTier(): QualityTier {
-    // 1. Check if tier was saved from previous session frame probe
+    // 1. Check if user set a manual performance override
     try {
+      const manualChoice = localStorage.getItem('unravel_manual_quality_tier');
+      if (manualChoice === 'high' || manualChoice === 'medium' || manualChoice === 'low') {
+        this.isManual = true;
+        this.probeCompleted = true; // Bypasses auto frame probe when manual choice exists
+        return manualChoice;
+      }
+
+      // 2. Check if auto tier was saved from previous session frame probe
       const saved = localStorage.getItem('unravel_quality_tier');
       if (saved === 'high' || saved === 'medium' || saved === 'low') {
         return saved;
       }
     } catch (e) {}
 
-    // 2. Hardware Concurrency (Core Count)
+    // 3. Hardware Concurrency & RAM inspection fallback
     const cores = navigator.hardwareConcurrency || 4;
-    // 3. Device Memory (RAM in GB, Chrome/Android supported)
     const ram = (navigator as any).deviceMemory || 4;
-
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
     if (cores <= 2 || ram <= 2) {
@@ -96,11 +107,10 @@ class QualityTierManager {
   }
 
   /**
-   * Starts a 1.5-second runtime frame-rate probe during hero animation
-   * to accurately measure live render performance.
+   * Starts a 1.5-second runtime frame-rate probe during hero animation if not manually overridden.
    */
   public startFrameProbe() {
-    if (typeof window === 'undefined' || this.probeCompleted) return;
+    if (typeof window === 'undefined' || this.probeCompleted || this.isManual) return;
 
     let frameTimes: number[] = [];
     let lastTime = performance.now();
@@ -108,10 +118,11 @@ class QualityTierManager {
     let animId: number;
 
     const measureFrame = (now: number) => {
+      if (this.isManual) return;
+
       const delta = now - lastTime;
       lastTime = now;
 
-      // Ignore huge deltas caused by tab backgrounding or initial load lag
       if (delta < 200) {
         frameTimes.push(delta);
       }
@@ -124,19 +135,15 @@ class QualityTierManager {
           const avgFrameTime = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
           let measuredTier: QualityTier = 'high';
 
-          // Frame time thresholds:
-          // Avg > 26ms => < 38 fps => 'low'
-          // Avg > 19ms => < 52 fps => 'medium'
           if (avgFrameTime > 26) {
             measuredTier = 'low';
           } else if (avgFrameTime > 19) {
             measuredTier = 'medium';
           }
 
-          // Don't upgrade beyond static limits, but downgrade if real FPS stutters
           const tierPriority: Record<QualityTier, number> = { high: 3, medium: 2, low: 1 };
           if (tierPriority[measuredTier] < tierPriority[this.currentTier]) {
-            this.setTier(measuredTier);
+            this.setTier(measuredTier, false);
           }
         }
       }
@@ -153,12 +160,36 @@ class QualityTierManager {
     return TIER_CONFIGS[this.currentTier];
   }
 
-  public setTier(tier: QualityTier) {
-    if (this.currentTier !== tier) {
+  public setManualTier(tier: QualityTier) {
+    this.isManual = true;
+    this.probeCompleted = true;
+    try {
+      localStorage.setItem('unravel_manual_quality_tier', tier);
+    } catch (e) {}
+    this.setTier(tier, true);
+  }
+
+  public clearManualOverride() {
+    this.isManual = false;
+    this.probeCompleted = false;
+    try {
+      localStorage.removeItem('unravel_manual_quality_tier');
+    } catch (e) {}
+    
+    // Fallback to initial auto detection and start frame probe
+    const autoTier = this.detectInitialTier();
+    this.setTier(autoTier, false);
+    this.startFrameProbe();
+  }
+
+  public setTier(tier: QualityTier, isManualSetting: boolean = false) {
+    if (this.currentTier !== tier || this.isManual !== isManualSetting) {
       this.currentTier = tier;
-      try {
-        localStorage.setItem('unravel_quality_tier', tier);
-      } catch (e) {}
+      if (!isManualSetting) {
+        try {
+          localStorage.setItem('unravel_quality_tier', tier);
+        } catch (e) {}
+      }
 
       const config = this.getConfig();
       this.listeners.forEach((listener) => listener(config));
@@ -175,3 +206,4 @@ class QualityTierManager {
 }
 
 export const qualityTierManager = new QualityTierManager();
+

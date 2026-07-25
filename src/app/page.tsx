@@ -8,6 +8,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { Button } from '@/components/ui/Button';
 import { MuteButton } from '@/components/ui/MuteButton';
+import { PerformanceButton } from '@/components/ui/PerformanceButton';
 import { ExportModal } from '@/components/ui/ExportModal';
 import { ResumeModal } from '@/components/ui/ResumeModal';
 import { GalleryModal } from '@/components/ui/GalleryModal';
@@ -475,6 +476,7 @@ export default function Home() {
                 >
                   <Images size={20} />
                 </button>
+                <PerformanceButton />
                 <MuteButton />
               </div>
             </div>
@@ -554,6 +556,7 @@ export default function Home() {
                 >
                   <Images size={20} />
                 </button>
+                <PerformanceButton />
                 <MuteButton />
                 <Button variant="secondary" onClick={() => setMode('select')}>
                   <Plus size={18} /> {t('NEW')}

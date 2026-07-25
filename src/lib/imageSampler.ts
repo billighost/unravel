@@ -120,8 +120,8 @@ export async function sampleImageToGrid(
     cols = Math.max(Math.round(maxDimension * aspect), 10);
   }
 
-  // Render on a high-resolution canvas (~4x supersampling)
-  const supersampleFactor = 4;
+  // Render on a high-resolution canvas (~6x supersampling for high detail)
+  const supersampleFactor = 6;
   const canvas = document.createElement('canvas');
   canvas.width = cols * supersampleFactor;
   canvas.height = rows * supersampleFactor;
