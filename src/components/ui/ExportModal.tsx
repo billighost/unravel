@@ -2,12 +2,18 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Image as ImageIcon, Layers, Video, Share2, X, Check } from 'lucide-react';
+import { Image as ImageIcon, Layers, Video, Share2, X, Check, Users, Sparkles } from 'lucide-react';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { canShareFiles } from '@/lib/shareHelper';
 import { videoRecorder, VideoFormat } from '@/lib/videoRecorder';
 import { qualityTierManager } from '@/lib/qualityTier';
 import { t } from '@/lib/i18n/strings';
+import { useAppStore } from '@/store/useAppStore';
+import { getDeviceId } from '@/lib/deviceId';
+import { generateThumbnailDataUrl } from '@/lib/storage';
+import { showToast } from '@/components/ui/Toast';
+import { announceToScreenReader } from '@/components/ui/AccessibilityAnnouncer';
+import { uploadDirectToCloudinary } from '@/lib/cloudinaryClient';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -16,6 +22,12 @@ interface ExportModalProps {
   onRecordVideo?: (format: VideoFormat) => void;
   onShareNative?: () => void;
 }
+
+const optionMotionProps = {
+  whileHover: { scale: 1.01, x: -1, y: -1 },
+  whileTap: { scale: 0.98, x: 2, y: 2 },
+  transition: { duration: 0.08 },
+};
 
 export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
@@ -28,6 +40,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [selectedVideoFormat, setSelectedVideoFormat] = useState<VideoFormat>('webm');
   const [isNativeMp4, setIsNativeMp4] = useState(false);
   const [isFallbackAllowed, setIsFallbackAllowed] = useState(true);
+  const [copiedChallenge, setCopiedChallenge] = useState(false);
+  const [galleryShared, setGalleryShared] = useState(false);
+  const [isCreatingChallenge, setIsCreatingChallenge] = useState(false);
+
+  const gridData = useAppStore((state) => state.gridData);
+  const isDisturbed = useAppStore((state) => state.isDisturbed);
+  const mode = useAppStore((state) => state.mode);
 
   useEffect(() => {
     setCanShare(canShareFiles());
@@ -64,6 +83,96 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     onClose();
   };
 
+  const handleChallengeFriend = async () => {
+    soundEngine.playUIClick();
+    if (isCreatingChallenge) return;
+    setIsCreatingChallenge(true);
+
+    try {
+      const physics = (window as any).__unravelPhysics;
+      const disturbed = physics ? physics.getDisturbedPositions() : [];
+      const rawThumbnail = generateThumbnailDataUrl(gridData);
+      const thumbnail = await uploadDirectToCloudinary(rawThumbnail);
+      const deviceId = getDeviceId();
+
+      const res = await fetch('/api/creations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': deviceId,
+        },
+        body: JSON.stringify({
+          grid_data: gridData,
+          disturbed_positions: disturbed,
+          thumbnail,
+          source_mode: mode,
+          is_public: false,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.shareUrl) {
+        const fullUrl = `${window.location.origin}${data.shareUrl}`;
+        await navigator.clipboard.writeText(fullUrl);
+        setCopiedChallenge(true);
+        soundEngine.playSuccessChime();
+        announceToScreenReader('Challenge link copied to clipboard');
+        setTimeout(() => {
+          setCopiedChallenge(false);
+          onClose();
+        }, 2000);
+      } else {
+        showToast("Couldn't create the challenge link — try again", 'error');
+      }
+    } catch (err) {
+      console.error('Failed to generate challenge link:', err);
+      showToast("Couldn't create the challenge link — check your connection", 'error');
+    } finally {
+      setIsCreatingChallenge(false);
+    }
+  };
+
+  const handlePublishToGallery = async () => {
+    soundEngine.playUIClick();
+    try {
+      const physics = (window as any).__unravelPhysics;
+      const disturbed = physics ? physics.getDisturbedPositions() : [];
+      const rawThumbnail = generateThumbnailDataUrl(gridData);
+      const thumbnail = await uploadDirectToCloudinary(rawThumbnail);
+      const deviceId = getDeviceId();
+
+      const res = await fetch('/api/creations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': deviceId,
+        },
+        body: JSON.stringify({
+          grid_data: gridData,
+          disturbed_positions: disturbed,
+          thumbnail,
+          source_mode: mode,
+          is_public: true,
+        }),
+      });
+
+      if (res.ok) {
+        setGalleryShared(true);
+        soundEngine.playSuccessChime();
+        announceToScreenReader('Artwork shared to the community gallery');
+        setTimeout(() => {
+          setGalleryShared(false);
+          onClose();
+        }, 2000);
+      } else {
+        showToast("Couldn't share to the gallery — try again", 'error');
+      }
+    } catch (err) {
+      console.error('Failed to share to gallery:', err);
+      showToast("Couldn't share to the gallery — check your connection", 'error');
+    }
+  };
+
   const isMp4Disabled = !isNativeMp4 && !isFallbackAllowed;
 
   return (
@@ -77,7 +186,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: 'rgba(0, 0, 0, 0.4)',
-          padding: '1.5rem',
+          padding: '0.75rem',
         }}
         onClick={handleClose}
       >
@@ -90,24 +199,28 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           style={{
             backgroundColor: 'var(--surface)',
             border: '4px solid var(--ink)',
-            boxShadow: '8px 8px 0 var(--ink)',
-            padding: '2rem',
-            maxWidth: '480px',
+            boxShadow: '6px 6px 0 var(--ink)',
+            padding: '1.5rem 1.25rem',
+            maxWidth: '440px',
             width: '100%',
             display: 'flex',
             flexDirection: 'column',
-            gap: '1.25rem',
+            gap: '1rem',
             position: 'relative',
+            maxHeight: '90vh',
+            overflowY: 'auto',
           }}
         >
           {/* Close button */}
-          <button
+          <motion.button
             onClick={handleClose}
-            aria-label="Close Export Modal"
+            aria-label="Close Save Menu"
+            whileHover={{ scale: 1.15 }}
+            whileTap={{ scale: 0.9 }}
             style={{
               position: 'absolute',
-              top: '1rem',
-              right: '1rem',
+              top: '0.75rem',
+              right: '0.75rem',
               backgroundColor: 'transparent',
               border: 'none',
               cursor: 'pointer',
@@ -115,73 +228,148 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             }}
           >
             <X size={20} />
-          </button>
+          </motion.button>
 
-          <div style={{ textAlign: 'center' }}>
-            <h2 className="font-heading" style={{ fontSize: '1.2rem', color: 'var(--ink)' }}>
+          <div style={{ textAlign: 'center', paddingRight: '1.5rem', paddingLeft: '0.5rem' }}>
+            <h2 className="font-heading" style={{ fontSize: 'min(1.1rem, 5vw)', color: 'var(--ink)', wordBreak: 'break-word' }}>
               {t('EXPORT_ARTWORK')}
             </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.4rem' }}>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.3rem', wordBreak: 'break-word' }}>
               {t('SELECT_BG_FORMAT')}
             </p>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-            {/* Option 1: With Background */}
-            <button
-              onClick={() => handleChoice(false)}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Challenge a Friend (Available when disturbed) */}
+            {isDisturbed && (
+              <motion.button
+                onClick={handleChallengeFriend}
+                disabled={isCreatingChallenge}
+                aria-label={copiedChallenge ? 'Challenge link copied' : 'Challenge a friend with this scrambled picture'}
+                className="font-heading"
+                {...optionMotionProps}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-start',
+                  gap: '0.85rem',
+                  padding: '0.85rem 1rem',
+                  backgroundColor: 'var(--accent)',
+                  color: '#FFFFFF',
+                  border: '3px solid var(--ink)',
+                  boxShadow: '4px 4px 0 var(--ink)',
+                  fontSize: '0.8rem',
+                  cursor: isCreatingChallenge ? 'wait' : 'pointer',
+                  textAlign: 'left',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {copiedChallenge ? <Check size={24} style={{ flexShrink: 0 }} /> : <Share2 size={24} style={{ flexShrink: 0 }} />}
+                <div style={{ flex: '1 1 auto' }}>
+                  <div>{copiedChallenge ? 'LINK COPIED!' : 'CHALLENGE A FRIEND'}</div>
+                  <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-body)', opacity: 0.9, marginTop: '0.15rem' }}>
+                    Send the scrambled version for a friend to unravel
+                  </div>
+                </div>
+              </motion.button>
+            )}
+
+            {/* Share to Community Gallery (Opt-in) */}
+            <motion.button
+              onClick={handlePublishToGallery}
+              aria-label={galleryShared ? 'Published to gallery' : 'Share artwork to community gallery'}
               className="font-heading"
+              {...optionMotionProps}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-start',
-                gap: '1.1rem',
-                padding: '1rem 1.25rem',
+                gap: '0.85rem',
+                padding: '0.85rem 1rem',
+                backgroundColor: galleryShared ? '#34C759' : 'var(--surface)',
+                color: galleryShared ? '#FFFFFF' : 'var(--ink)',
+                border: '3px solid var(--ink)',
+                boxShadow: '4px 4px 0 var(--ink)',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                textAlign: 'left',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+              }}
+            >
+              {galleryShared ? <Check size={24} style={{ flexShrink: 0 }} /> : <Users size={24} style={{ flexShrink: 0 }} />}
+              <div style={{ flex: '1 1 auto' }}>
+                <div>{galleryShared ? 'SHARED TO GALLERY!' : 'SHARE TO GALLERY'}</div>
+                <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-body)', opacity: 0.8, marginTop: '0.15rem' }}>
+                  Show your artwork in the public gallery
+                </div>
+              </div>
+            </motion.button>
+
+            {/* Option 1: With Background */}
+            <motion.button
+              onClick={() => handleChoice(false)}
+              aria-label="Save artwork with background"
+              className="font-heading"
+              {...optionMotionProps}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                gap: '0.85rem',
+                padding: '0.85rem 1rem',
                 backgroundColor: 'var(--surface)',
                 color: 'var(--ink)',
                 border: '3px solid var(--ink)',
                 boxShadow: '4px 4px 0 var(--ink)',
-                fontSize: '0.9rem',
+                fontSize: '0.8rem',
                 cursor: 'pointer',
                 textAlign: 'left',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
               }}
             >
-              <ImageIcon size={28} color="var(--ink)" />
-              <div>
+              <ImageIcon size={24} color="var(--ink)" style={{ flexShrink: 0 }} />
+              <div style={{ flex: '1 1 auto' }}>
                 <div>{t('WITH_BACKGROUND')}</div>
-                <div style={{ fontSize: '0.72rem', fontFamily: 'var(--font-body)', opacity: 0.8, marginTop: '0.15rem' }}>
-                  Full canvas PNG image
+                <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-body)', opacity: 0.8, marginTop: '0.15rem' }}>
+                  Your full artwork as a PNG image
                 </div>
               </div>
-            </button>
+            </motion.button>
 
             {/* Option 2: Transparent */}
-            <button
+            <motion.button
               onClick={() => handleChoice(true)}
+              aria-label="Save artwork with transparent background"
               className="font-heading"
+              {...optionMotionProps}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-start',
-                gap: '1.1rem',
-                padding: '1rem 1.25rem',
+                gap: '0.85rem',
+                padding: '0.85rem 1rem',
                 backgroundColor: 'var(--surface)',
                 color: 'var(--ink)',
                 border: '3px solid var(--ink)',
                 boxShadow: '4px 4px 0 var(--ink)',
-                fontSize: '0.9rem',
+                fontSize: '0.8rem',
                 cursor: 'pointer',
                 textAlign: 'left',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
               }}
             >
-              <Layers size={28} color="var(--ink)" />
-              <div>
+              <Layers size={24} color="var(--ink)" style={{ flexShrink: 0 }} />
+              <div style={{ flex: '1 1 auto' }}>
                 <div>{t('TRANSPARENT')}</div>
-                <div style={{ fontSize: '0.72rem', fontFamily: 'var(--font-body)', opacity: 0.8, marginTop: '0.15rem' }}>
-                  Cube grid PNG alpha cut-out
+                <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-body)', opacity: 0.8, marginTop: '0.15rem' }}>
+                  Just the cubes, transparent background
                 </div>
               </div>
-            </button>
+            </motion.button>
 
             {/* Option 3: Record a Moment (Video with WEBM / MP4 Selector) */}
             {onRecordVideo && (
@@ -190,27 +378,28 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   backgroundColor: 'var(--surface)',
                   border: '3px solid var(--ink)',
                   boxShadow: '4px 4px 0 var(--ink)',
-                  padding: '1rem 1.25rem',
+                  padding: '0.85rem 1rem',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.75rem',
+                  gap: '0.5rem',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <Video size={24} color="var(--ink)" />
-                    <span className="font-heading" style={{ fontSize: '0.9rem', color: 'var(--ink)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Video size={20} color="var(--ink)" style={{ flexShrink: 0 }} />
+                    <span className="font-heading" style={{ fontSize: '0.8rem', color: 'var(--ink)' }}>
                       {t('RECORD_MOMENT')}
                     </span>
                   </div>
 
                   {/* Format Selector Pills: WEBM vs MP4 */}
-                  <div style={{ display: 'flex', gap: '0.35rem' }}>
+                  <div style={{ display: 'flex', gap: '0.25rem' }}>
                     <button
                       onClick={() => setSelectedVideoFormat('webm')}
+                      aria-label="Select WebM format"
                       style={{
-                        padding: '0.2rem 0.6rem',
-                        fontSize: '0.7rem',
+                        padding: '0.15rem 0.45rem',
+                        fontSize: '0.65rem',
                         fontFamily: 'var(--font-heading)',
                         backgroundColor: selectedVideoFormat === 'webm' ? 'var(--ink)' : 'transparent',
                         color: selectedVideoFormat === 'webm' ? '#FFFFFF' : 'var(--ink)',
@@ -223,9 +412,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     <button
                       disabled={isMp4Disabled}
                       onClick={() => setSelectedVideoFormat('mp4')}
+                      aria-label="Select MP4 format"
                       style={{
-                        padding: '0.2rem 0.6rem',
-                        fontSize: '0.7rem',
+                        padding: '0.15rem 0.45rem',
+                        fontSize: '0.65rem',
                         fontFamily: 'var(--font-heading)',
                         backgroundColor: selectedVideoFormat === 'mp4' ? 'var(--ink)' : 'transparent',
                         color: isMp4Disabled ? '#AAA' : selectedVideoFormat === 'mp4' ? '#FFFFFF' : 'var(--ink)',
@@ -234,68 +424,77 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         opacity: isMp4Disabled ? 0.6 : 1,
                       }}
                     >
-                      MP4 {isNativeMp4 ? '(Native)' : ''}
+                      MP4
                     </button>
                   </div>
                 </div>
 
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                  {selectedVideoFormat === 'webm' && 'Fast WebM video stream capture (Universal web format)'}
-                  {selectedVideoFormat === 'mp4' && isNativeMp4 && 'Native H.264 MP4 recording (Safari/iOS supported)'}
-                  {selectedVideoFormat === 'mp4' && !isNativeMp4 && !isMp4Disabled && 'Converts WebM to MP4 via lazy encoder'}
-                  {isMp4Disabled && 'MP4 transcode disabled on low-end tier to preserve performance. WebM recommended.'}
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', wordBreak: 'break-word' }}>
+                  {selectedVideoFormat === 'webm' && 'Quick video clip for sharing'}
+                  {selectedVideoFormat === 'mp4' && isNativeMp4 && 'Video clip, plays everywhere'}
+                  {selectedVideoFormat === 'mp4' && !isNativeMp4 && !isMp4Disabled && 'Video clip, may take a moment to convert'}
+                  {isMp4Disabled && 'MP4 not available on this device. Use WebM instead.'}
                 </div>
 
-                <button
+                <motion.button
                   onClick={() => handleRecordVideo(selectedVideoFormat)}
+                  aria-label={`Start recording ${selectedVideoFormat.toUpperCase()} video`}
                   className="font-heading"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
                   style={{
                     backgroundColor: 'var(--accent)',
                     color: '#FFFFFF',
                     border: '2px solid var(--ink)',
-                    padding: '0.65rem 1rem',
-                    fontSize: '0.8rem',
+                    padding: '0.5rem 0.85rem',
+                    fontSize: '0.75rem',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '0.5rem',
-                    marginTop: '0.25rem',
+                    gap: '0.4rem',
+                    marginTop: '0.15rem',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
                   }}
                 >
-                  <Video size={16} /> START RECORDING ({selectedVideoFormat.toUpperCase()})
-                </button>
+                  <Video size={14} style={{ flexShrink: 0 }} /> START RECORDING ({selectedVideoFormat.toUpperCase()})
+                </motion.button>
               </div>
             )}
 
             {/* Option 4: Native Share (If Web Share API supported) */}
             {canShare && onShareNative && (
-              <button
+              <motion.button
                 onClick={handleShare}
+                aria-label="Share artwork via system share sheet"
                 className="font-heading"
+                {...optionMotionProps}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'flex-start',
-                  gap: '1.1rem',
-                  padding: '1rem 1.25rem',
+                  gap: '0.85rem',
+                  padding: '0.85rem 1rem',
                   backgroundColor: 'var(--surface)',
                   color: 'var(--ink)',
                   border: '3px solid var(--ink)',
                   boxShadow: '4px 4px 0 var(--ink)',
-                  fontSize: '0.9rem',
+                  fontSize: '0.8rem',
                   cursor: 'pointer',
                   textAlign: 'left',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
                 }}
               >
-                <Share2 size={28} color="var(--ink)" />
-                <div>
+                <Share2 size={24} color="var(--ink)" style={{ flexShrink: 0 }} />
+                <div style={{ flex: '1 1 auto' }}>
                   <div>{t('SHARE_ARTWORK')}</div>
-                  <div style={{ fontSize: '0.72rem', fontFamily: 'var(--font-body)', opacity: 0.8, marginTop: '0.15rem' }}>
+                  <div style={{ fontSize: '0.65rem', fontFamily: 'var(--font-body)', opacity: 0.8, marginTop: '0.15rem' }}>
                     Send via Messages, WhatsApp, or AirDrop
                   </div>
                 </div>
-              </button>
+              </motion.button>
             )}
           </div>
         </motion.div>

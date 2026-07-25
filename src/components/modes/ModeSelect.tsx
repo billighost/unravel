@@ -26,63 +26,79 @@ export const ModeSelect: React.FC = () => {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
-        padding: '2rem',
+        padding: '1rem',
+        overflowY: 'auto',
       }}
     >
-      <div style={{ position: 'absolute', top: '2rem', left: '2rem', right: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Button variant="secondary" onClick={() => setMode('landing')}>
-          <ArrowLeft size={18} /> {t('BACK')}
+      {/* Absolute Top Bar */}
+      <div style={{ position: 'absolute', top: '1rem', left: '1rem', right: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 12 }}>
+        <Button variant="secondary" onClick={() => setMode('landing')} aria-label="Go Back" style={{ padding: '0.6rem 1rem' }}>
+          <ArrowLeft size={18} />
+          <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>{t('BACK')}</span>
         </Button>
         <MuteButton />
       </div>
 
-      <div style={{ marginBottom: '3rem', textAlign: 'center' }}>
-        <Wordmark size="lg" />
-        <p style={{ marginTop: '0.75rem', color: 'var(--text-secondary)', fontSize: '1.1rem' }}>
-          {t('CHOOSE_SOURCE')}
-        </p>
-      </div>
-
+      {/* Centered Scrollable Area */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: '2rem',
-          maxWidth: '900px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
           width: '100%',
+          maxWidth: '900px',
+          margin: 'auto',
+          paddingTop: '4.5rem',
+          paddingBottom: '1.5rem',
         }}
       >
-        <Card onClick={() => setMode('upload')}>
-          <ImageIcon size={56} color="var(--ink)" />
-          <h2 className="font-heading" style={{ fontSize: '1.1rem', marginTop: '0.5rem' }}>
-            {t('PHOTO')}
-          </h2>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-            Upload any image or drawing
+        <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+          <Wordmark size="md" />
+          <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            {t('CHOOSE_SOURCE')}
           </p>
-        </Card>
+        </div>
 
-        <Card onClick={() => setMode('draw')}>
-          <Paintbrush size={56} color="var(--ink)" />
-          <h2 className="font-heading" style={{ fontSize: '1.1rem', marginTop: '0.5rem' }}>
-            {t('DRAW')}
-          </h2>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-            Paint pixel art on canvas
-          </p>
-        </Card>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))',
+            gap: '1.25rem',
+            width: '100%',
+          }}
+        >
+          <Card onClick={() => setMode('upload')}>
+            <ImageIcon size={48} color="var(--ink)" />
+            <h2 className="font-heading" style={{ fontSize: '0.95rem', marginTop: '0.5rem' }}>
+              {t('PHOTO')}
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Upload any image or drawing
+            </p>
+          </Card>
 
-        <Card onClick={() => setMode('type')}>
-          <TypeIcon size={56} color="var(--ink)" />
-          <h2 className="font-heading" style={{ fontSize: '1.1rem', marginTop: '0.5rem' }}>
-            {t('TYPE')}
-          </h2>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-            Turn words into 3D cubes
-          </p>
-        </Card>
+          <Card onClick={() => setMode('draw')}>
+            <Paintbrush size={48} color="var(--ink)" />
+            <h2 className="font-heading" style={{ fontSize: '0.95rem', marginTop: '0.5rem' }}>
+              {t('DRAW')}
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Paint pixel art on canvas
+            </p>
+          </Card>
+
+          <Card onClick={() => setMode('type')}>
+            <TypeIcon size={48} color="var(--ink)" />
+            <h2 className="font-heading" style={{ fontSize: '0.95rem', marginTop: '0.5rem' }}>
+              {t('TYPE')}
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Turn words into 3D cubes
+            </p>
+          </Card>
+        </div>
       </div>
     </motion.div>
   );
 };
+

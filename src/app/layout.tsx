@@ -27,6 +27,8 @@ export const viewport: Viewport = {
   themeColor: '#F7F6F2',
 };
 
+import ClientProviders from './ClientProviders';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,6 +38,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         {children}
+        <ClientProviders />
         <div className="crt-overlay" />
         <script
           dangerouslySetInnerHTML={{

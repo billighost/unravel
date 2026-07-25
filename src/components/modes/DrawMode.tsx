@@ -186,7 +186,7 @@ export const DrawMode: React.FC = () => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '1.5rem',
+        padding: '1rem',
       }}
     >
       {/* Top Header */}
@@ -197,32 +197,30 @@ export const DrawMode: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: '0.5rem',
         }}
       >
-        <Button variant="secondary" onClick={() => setMode('select')}>
-          <ArrowLeft size={18} /> {t('BACK')}
+        <Button variant="secondary" onClick={() => setMode('select')} aria-label="Go Back" style={{ padding: '0.6rem 1rem' }}>
+          <ArrowLeft size={18} />
+          <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>{t('BACK')}</span>
         </Button>
 
         <Wordmark size="sm" />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <MuteButton />
-          <Button variant="primary" onClick={handleConvert}>
-            <Box size={18} /> {t('TURN_INTO_CUBES')}
-          </Button>
-        </div>
+        <MuteButton />
       </div>
 
       {/* Main Drawing Canvas Board (Black for Contrast) */}
       <div
         style={{
           border: '4px solid var(--ink)',
-          boxShadow: '6px 6px 0 var(--ink)',
+          boxShadow: '4px 4px 0 var(--ink)',
           backgroundColor: '#000000',
           borderRadius: 0,
           overflow: 'hidden',
           cursor: 'crosshair',
           touchAction: 'none',
+          maxWidth: '100%',
         }}
       >
         <canvas
@@ -234,7 +232,7 @@ export const DrawMode: React.FC = () => {
           style={{
             display: 'block',
             width: 'min(90vw, 600px)',
-            height: 'min(60vh, 400px)',
+            height: 'min(50vh, 360px)',
           }}
         />
       </div>
@@ -245,64 +243,120 @@ export const DrawMode: React.FC = () => {
           backgroundColor: 'var(--surface)',
           border: '3px solid var(--ink)',
           boxShadow: '4px 4px 0 var(--ink)',
-          padding: '0.75rem 1.25rem',
+          padding: '0.5rem 0.75rem',
           display: 'flex',
-          flexWrap: 'wrap',
           alignItems: 'center',
-          justifyContent: 'center',
-          gap: '1.5rem',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
           maxWidth: '800px',
           width: '100%',
         }}
       >
-        {/* Custom Touch-Friendly Color Picker Trigger */}
-        <ColorPicker currentColor={currentColor} onChange={setCurrentColor} />
+        {/* Left Scrollable Tools Area */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+            flex: '1 1 auto',
+            paddingRight: '0.5rem',
+          }}
+        >
+          {/* Custom Touch-Friendly Color Picker Trigger */}
+          <ColorPicker currentColor={currentColor} onChange={setCurrentColor} />
 
-        {/* Brush Sizes */}
-        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-          {BRUSH_SIZES.map((b) => (
+          {/* Divider */}
+          <div style={{ width: '2px', height: '24px', backgroundColor: 'var(--border)', flexShrink: 0 }} />
+
+          {/* Brush Sizes */}
+          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexShrink: 0 }}>
+            {BRUSH_SIZES.map((b) => (
+              <button
+                key={b.label}
+                onClick={() => {
+                  soundEngine.playUIClick();
+                  setCurrentSize(b.radius);
+                }}
+                className="font-heading"
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  backgroundColor: currentSize === b.radius ? 'var(--ink)' : 'var(--surface)',
+                  color: currentSize === b.radius ? '#FFFFFF' : 'var(--ink)',
+                  border: '2px solid var(--ink)',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div style={{ width: '2px', height: '24px', backgroundColor: 'var(--border)', flexShrink: 0 }} />
+
+          {/* Compact Secondary Group (Undo & Start Over) */}
+          <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
             <button
-              key={b.label}
-              onClick={() => {
-                soundEngine.playUIClick();
-                setCurrentSize(b.radius);
-              }}
-              className="font-heading"
+              onClick={handleUndo}
+              disabled={!canUndo}
+              aria-label="Undo last stroke"
               style={{
                 width: '32px',
                 height: '32px',
-                backgroundColor: currentSize === b.radius ? 'var(--ink)' : 'var(--surface)',
-                color: currentSize === b.radius ? '#FFFFFF' : 'var(--ink)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'var(--surface)',
+                color: 'var(--ink)',
                 border: '2px solid var(--ink)',
-                fontSize: '0.75rem',
+                boxShadow: '1px 1px 0 var(--ink)',
+                cursor: canUndo ? 'pointer' : 'not-allowed',
+                opacity: canUndo ? 1 : 0.4,
+              }}
+            >
+              <RotateCcw size={14} />
+            </button>
+            <button
+              onClick={handleStartOver}
+              aria-label="Clear canvas"
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '2px solid var(--ink)',
+                boxShadow: '1px 1px 0 var(--ink)',
                 cursor: 'pointer',
               }}
             >
-              {b.label}
+              <Trash2 size={14} />
             </button>
-          ))}
+          </div>
         </div>
 
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <Button
-            variant="secondary"
-            onClick={handleUndo}
-            disabled={!canUndo}
-            style={{
-              padding: '0.5rem 0.85rem',
-              fontSize: '0.75rem',
-              opacity: canUndo ? 1 : 0.4,
-              cursor: canUndo ? 'pointer' : 'not-allowed',
-            }}
-          >
-            <RotateCcw size={14} /> {t('UNDO')}
-          </Button>
-          <Button variant="secondary" onClick={handleStartOver} style={{ padding: '0.5rem 0.85rem', fontSize: '0.75rem' }}>
-            <Trash2 size={14} /> {t('CLEAR')}
-          </Button>
-        </div>
+        {/* Right Primary Action */}
+        <Button
+          variant="primary"
+          onClick={handleConvert}
+          aria-label="Turn drawing into 3D cubes"
+          style={{
+            padding: '0.65rem 1.25rem',
+            fontSize: '0.8rem',
+            flexShrink: 0,
+          }}
+        >
+          <Box size={16} />
+          <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>CUBES</span>
+        </Button>
       </div>
     </motion.div>
   );
 };
+

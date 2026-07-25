@@ -203,7 +203,7 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
     canvasEl.addEventListener('webglcontextlost', handleContextLost, false);
     canvasEl.addEventListener('webglcontextrestored', handleContextRestored, false);
 
-    // Export handler creation
+    // Export handler creation with Chaos Stat + Watermark overlay
     if (onExportReady) {
       onExportReady((options?: { transparent?: boolean }) => {
         if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
@@ -220,12 +220,50 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
         }
 
         rend.render(scn, cam);
-        const dataUrl = rend.domElement.toDataURL('image/png');
+
+        // Capture WebGL canvas
+        const webglCanvas = rend.domElement;
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = webglCanvas.width;
+        exportCanvas.height = webglCanvas.height;
+
+        const ctx = exportCanvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(webglCanvas, 0, 0);
+
+          // Get Chaos percentage
+          const chaos = physicsRef.current ? physicsRef.current.getChaosPercentage() : 0;
+          const fontSize = Math.max(16, Math.floor(exportCanvas.height * 0.026));
+
+          // Draw bottom-right Watermark & Chaos Stat Overlay
+          ctx.save();
+          ctx.font = `900 ${fontSize}px var(--font-heading), monospace, sans-serif`;
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'bottom';
+
+          const textMargin = fontSize;
+          const textLine1 = chaos > 0 ? `${chaos}% DISTURBED` : 'PRISTINE ART';
+          const textLine2 = 'UNRAVEL • unravel.app';
+
+          // Shadow for pixel aesthetic legibility
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+          ctx.fillText(textLine1, exportCanvas.width - textMargin + 2, exportCanvas.height - textMargin - fontSize - 2);
+          ctx.fillText(textLine2, exportCanvas.width - textMargin + 2, exportCanvas.height - textMargin + 2);
+
+          ctx.fillStyle = '#FF5252';
+          ctx.fillText(textLine1, exportCanvas.width - textMargin, exportCanvas.height - textMargin - fontSize - 4);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillText(textLine2, exportCanvas.width - textMargin, exportCanvas.height - textMargin);
+
+          ctx.restore();
+        }
 
         if (isTransparent) {
           scn.background = originalBg;
           rend.render(scn, cam);
         }
+
+        const dataUrl = exportCanvas.toDataURL('image/png');
 
         const link = document.createElement('a');
         link.download = `unravel-art-${Date.now()}.png`;

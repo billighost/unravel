@@ -67,7 +67,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: 'rgba(0, 0, 0, 0.4)',
-          padding: '1.5rem',
+          padding: '0.75rem',
         }}
         onClick={handleClose}
       >
@@ -80,26 +80,28 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           style={{
             backgroundColor: 'var(--surface)',
             border: '4px solid var(--ink)',
-            boxShadow: '8px 8px 0 var(--ink)',
-            padding: '2rem',
+            boxShadow: '6px 6px 0 var(--ink)',
+            padding: '1.5rem 1rem',
             maxWidth: '560px',
             width: '100%',
             maxHeight: '80vh',
             display: 'flex',
             flexDirection: 'column',
-            gap: '1.25rem',
+            gap: '1rem',
             position: 'relative',
             overflow: 'hidden',
           }}
         >
           {/* Close Button */}
-          <button
+          <motion.button
             onClick={handleClose}
             aria-label="Close Gallery"
+            whileHover={{ scale: 1.15 }}
+            whileTap={{ scale: 0.9 }}
             style={{
               position: 'absolute',
-              top: '1rem',
-              right: '1rem',
+              top: '0.75rem',
+              right: '0.75rem',
               backgroundColor: 'transparent',
               border: 'none',
               cursor: 'pointer',
@@ -107,38 +109,40 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
             }}
           >
             <X size={20} />
-          </button>
+          </motion.button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <Images size={24} color="var(--ink)" />
-            <h2 className="font-heading" style={{ fontSize: '1.15rem', color: 'var(--ink)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingRight: '1.5rem' }}>
+            <Images size={20} color="var(--ink)" />
+            <h2 className="font-heading" style={{ fontSize: 'min(1.1rem, 5vw)', color: 'var(--ink)', wordBreak: 'break-word' }}>
               {t('LOCAL_GALLERY')}
             </h2>
           </div>
 
           {loading ? (
-            <div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            <div style={{ padding: '2rem 0', textAlign: 'center', color: 'var(--text-secondary)' }}>
               Loading gallery...
             </div>
           ) : items.length === 0 ? (
-            <div style={{ padding: '3rem 0', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            <div style={{ padding: '2rem 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.75rem', wordBreak: 'break-word' }}>
               No saved creations yet. Turn an image, sketch, or text into cubes to save it here!
             </div>
           ) : (
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                gap: '1rem',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(min(120px, 100%), 1fr))',
+                gap: '0.75rem',
                 overflowY: 'auto',
-                paddingRight: '0.5rem',
-                maxHeight: '420px',
+                paddingRight: '0.25rem',
+                maxHeight: '380px',
               }}
             >
               {items.map((item) => (
-                <div
+                <motion.div
                   key={item.id}
                   onClick={() => handleSelect(item)}
+                  whileHover={{ scale: 1.03, x: -2, y: -2 }}
+                  whileTap={{ scale: 0.97, x: 2, y: 2 }}
                   style={{
                     backgroundColor: 'var(--surface)',
                     border: '2px solid var(--ink)',
@@ -153,7 +157,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                   <div
                     style={{
                       width: '100%',
-                      height: '100px',
+                      height: '90px',
                       backgroundColor: '#000000',
                       backgroundImage: `url(${item.thumbnail})`,
                       backgroundSize: 'contain',
@@ -188,7 +192,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                       <Trash2 size={13} />
                     </button>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           )}

@@ -436,6 +436,33 @@ class SoundEngine {
     osc.start(now);
     osc.stop(now + 0.055);
   }
+
+  /**
+   * Short celebratory chime for confirmations (gallery shared, report sent, streak milestone).
+   */
+  public playSuccessChime(): void {
+    const ctx = this.initContext();
+    if (!ctx || !this.masterGain) return;
+
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);        // A5
+    osc.frequency.setValueAtTime(1318.5, now + 0.08); // E6
+
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(now);
+    osc.stop(now + 0.22);
+  }
 }
 
 export const soundEngine = new SoundEngine();

@@ -4,11 +4,11 @@ import React, { useRef, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RotateCcw, Download, Plus, Images, Square, Sparkles, Loader2 } from 'lucide-react';
+import { showToast } from '@/components/ui/Toast';
 import { useAppStore } from '@/store/useAppStore';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { Button } from '@/components/ui/Button';
-import { MuteButton } from '@/components/ui/MuteButton';
-import { PerformanceButton } from '@/components/ui/PerformanceButton';
+import { AppMenu } from '@/components/ui/AppMenu';
 import { ExportModal } from '@/components/ui/ExportModal';
 import { ResumeModal } from '@/components/ui/ResumeModal';
 import { GalleryModal } from '@/components/ui/GalleryModal';
@@ -24,6 +24,7 @@ import { soundEngine } from '@/lib/audio/soundEngine';
 import { videoRecorder, VideoFormat } from '@/lib/videoRecorder';
 import { shareFile } from '@/lib/shareHelper';
 import { getLastCreation, clearLastCreation, toSampledGridResult, SavedCreation, SavedGridData } from '@/lib/storage';
+import { getDeviceId } from '@/lib/deviceId';
 import { t } from '@/lib/i18n/strings';
 
 const CubeCanvas = dynamic(
@@ -59,14 +60,19 @@ export default function Home() {
 
   // Global Image Paste & Drag-and-Drop Anywhere Handlers (Desktop)
   const processImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast("That doesn't look like an image — try a photo or drawing", 'error');
+      return;
+    }
     try {
       setIsProcessingDroppedImage(true);
       soundEngine.playUIClick();
       const sampled = await sampleImageToGrid(file, 75);
       setGridData(sampled, 'upload');
-      announceToScreenReader('Pasted/Dropped image pixelated into 3D physics canvas');
+      announceToScreenReader('Image turned into 3D cubes');
     } catch (err) {
       console.error('Image sampling failed on paste/drop:', err);
+      showToast("Couldn't read that image — try a different one", 'error');
     } finally {
       setIsProcessingDroppedImage(false);
     }
@@ -157,7 +163,9 @@ export default function Home() {
     const started = videoRecorder.start(canvas, format);
     if (started) {
       setIsRecording(true);
-      announceToScreenReader(`Video recording started (${format.toUpperCase()}). Disturb picture and revert to complete`);
+      announceToScreenReader(`Video recording started. Disturb picture and revert to finish`);
+    } else {
+      showToast("Video recording isn't supported on this browser", 'error');
     }
   };
 
@@ -449,54 +457,59 @@ export default function Home() {
               zIndex: 5,
             }}
           >
-            {/* Top Bar: Wordmark + Gallery + Mute Button */}
-            <div style={{ pointerEvents: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Top Bar: Wordmark + AppMenu */}
+            <div style={{ pointerEvents: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
               <Wordmark size="lg" />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <button
-                  data-ui-obstacle="true"
-                  onClick={() => {
-                    soundEngine.playUIClick();
-                    setIsGalleryOpen(true);
-                  }}
-                  aria-label="Open Local Gallery"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '42px',
-                    height: '42px',
-                    backgroundColor: 'var(--surface)',
-                    color: 'var(--ink)',
-                    border: '3px solid var(--ink)',
-                    boxShadow: '3px 3px 0 var(--ink)',
-                    cursor: 'pointer',
-                    outline: 'none',
-                  }}
-                >
-                  <Images size={20} />
-                </button>
-                <PerformanceButton />
-                <MuteButton />
-              </div>
+              <AppMenu
+                onOpenGallery={() => setIsGalleryOpen(true)}
+                showNewOption={false}
+              />
             </div>
 
-            {/* Bottom Bar: Single Start Button */}
+            {/* Bottom Bar: Today's Picture Daily Challenge + Start Button */}
             <div
               style={{
                 pointerEvents: 'auto',
                 display: 'flex',
-                justifyContent: 'center',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '1rem',
                 marginBottom: '1rem',
+                width: '100%',
               }}
             >
-              <Button
-                variant="primary"
-                onClick={() => setMode('select')}
-                style={{ fontSize: '1.2rem', padding: '1.1rem 3rem' }}
-              >
-                {t('START')}
-              </Button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'center', width: '100%', maxWidth: '400px' }}>
+                <a href="/api/daily-challenge-redirect" onClick={async (e) => {
+                  e.preventDefault();
+                  soundEngine.playUIClick();
+                  try {
+                    const deviceId = getDeviceId();
+                    const res = await fetch('/api/daily-challenge', { headers: { 'x-device-id': deviceId } });
+                    const data = await res.json();
+                    if (data.challenge && data.challenge.id) {
+                      window.location.href = `/challenge/${data.challenge.id}`;
+                    } else {
+                      showToast("No daily picture available right now — try again later", 'info');
+                      setMode('select');
+                    }
+                  } catch (_) {
+                    showToast("Couldn't load today's picture — check your connection", 'error');
+                    setMode('select');
+                  }
+                }} style={{ textDecoration: 'none', display: 'inline-flex', flex: '1 1 120px' }}>
+                  <Button variant="secondary" style={{ fontSize: '0.85rem', padding: '0.85rem 1.25rem', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                    <Sparkles size={16} color="var(--accent)" /> <span>TODAY'S PICTURE</span>
+                  </Button>
+                </a>
+
+                <Button
+                  variant="primary"
+                  onClick={() => setMode('select')}
+                  style={{ fontSize: '0.9rem', padding: '0.85rem 1.75rem', flex: '1 1 100px' }}
+                >
+                  {t('START')}
+                </Button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -516,11 +529,11 @@ export default function Home() {
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
-              padding: '2rem',
+              padding: '1.5rem',
               zIndex: 5,
             }}
           >
-            {/* Top Bar: Wordmark + Controls */}
+            {/* Top Bar: Wordmark + AppMenu */}
             <div
               style={{
                 display: 'flex',
@@ -532,36 +545,11 @@ export default function Home() {
             >
               <Wordmark size="md" onClick={resetToDemo} />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <button
-                  data-ui-obstacle="true"
-                  onClick={() => {
-                    soundEngine.playUIClick();
-                    setIsGalleryOpen(true);
-                  }}
-                  aria-label="Open Local Gallery"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '42px',
-                    height: '42px',
-                    backgroundColor: 'var(--surface)',
-                    color: 'var(--ink)',
-                    border: '3px solid var(--ink)',
-                    boxShadow: '3px 3px 0 var(--ink)',
-                    cursor: 'pointer',
-                    outline: 'none',
-                  }}
-                >
-                  <Images size={20} />
-                </button>
-                <PerformanceButton />
-                <MuteButton />
-                <Button variant="secondary" onClick={() => setMode('select')}>
-                  <Plus size={18} /> {t('NEW')}
-                </Button>
-              </div>
+              <AppMenu
+                onOpenGallery={() => setIsGalleryOpen(true)}
+                onNewCreation={() => setMode('select')}
+                showNewOption={true}
+              />
             </div>
 
             {/* Bottom Floating Bar: Revert (when disturbed), Disperse (always), Save (always) */}
@@ -570,9 +558,10 @@ export default function Home() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '1.25rem',
+                gap: '1rem',
                 width: '100%',
                 pointerEvents: 'auto',
+                flexWrap: 'nowrap',
               }}
             >
               {isDisturbed && (
@@ -582,8 +571,14 @@ export default function Home() {
                   exit={{ scale: 0, opacity: 0 }}
                   transition={{ duration: 0.15 }}
                 >
-                  <Button variant="primary" onClick={handleRevert} style={{ fontSize: '1rem', padding: '1rem 2rem' }}>
-                    <RotateCcw size={20} /> {t('REVERT')}
+                  <Button
+                    variant="primary"
+                    onClick={handleRevert}
+                    aria-label="Revert cubes"
+                    style={{ fontSize: '0.9rem', padding: '0.85rem 1.5rem' }}
+                  >
+                    <RotateCcw size={18} />
+                    <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>{t('REVERT')}</span>
                   </Button>
                 </motion.div>
               )}
@@ -592,23 +587,27 @@ export default function Home() {
                 variant="secondary"
                 onClick={handleDisperse}
                 disabled={isDisperseCooling}
+                aria-label="Disperse cubes"
                 style={{
-                  fontSize: '0.95rem',
-                  padding: '1rem 1.75rem',
+                  fontSize: '0.9rem',
+                  padding: '0.85rem 1.5rem',
                   opacity: isDisperseCooling ? 0.5 : 1,
                   cursor: isDisperseCooling ? 'not-allowed' : 'pointer',
                   transition: 'opacity 0.2s ease',
                 }}
               >
-                <Sparkles size={18} /> {t('DISPERSE')}
+                <Sparkles size={18} />
+                <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>{t('DISPERSE')}</span>
               </Button>
 
               <Button
                 variant="secondary"
                 onClick={() => setIsExportOpen(true)}
-                style={{ fontSize: '0.95rem', padding: '1rem 1.75rem' }}
+                aria-label="Save or export creation"
+                style={{ fontSize: '0.9rem', padding: '0.85rem 1.5rem' }}
               >
-                <Download size={18} /> {t('SAVE')}
+                <Download size={18} />
+                <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>{t('SAVE')}</span>
               </Button>
             </div>
           </motion.div>

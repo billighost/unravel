@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { UIObstacleAABB } from '@/lib/uiObstacles';
+import { sessionPhysicsConfig } from '@/lib/sessionPhysics';
 
 // Haptic vibration throttling
 let lastVibrateTime = 0;
@@ -82,6 +83,82 @@ export class CubePhysicsEngine {
 
   public setRestSpeedThreshold(threshold: number) {
     this.restSpeedThreshold = threshold;
+  }
+
+  /**
+   * Calculates the percentage of cubes displaced from their target position (Chaos Stat).
+   */
+  public getChaosPercentage(): number {
+    const { positions, targetPositions, totalCubes, cubeSize } = this.grid;
+    if (totalCubes === 0) return 0;
+
+    let displaced = 0;
+    const thresholdSq = Math.pow(cubeSize * 0.4, 2);
+
+    for (let i = 0; i < totalCubes; i++) {
+      const i3 = i * 3;
+      const dx = positions[i3] - targetPositions[i3];
+      const dy = positions[i3 + 1] - targetPositions[i3 + 1];
+      const dz = positions[i3 + 2] - targetPositions[i3 + 2];
+      if (dx * dx + dy * dy + dz * dz > thresholdSq) {
+        displaced++;
+      }
+    }
+
+    return Math.round((displaced / totalCubes) * 100);
+  }
+
+  /**
+   * Exports array of current disturbed cube offsets for saving challenge links.
+   */
+  public getDisturbedPositions(): Array<{ i: number; x: number; y: number; z: number; rx: number; ry: number; rz: number }> {
+    const { positions, rotations, targetPositions, totalCubes, cubeSize } = this.grid;
+    const result = [];
+    const thresholdSq = Math.pow(cubeSize * 0.2, 2);
+
+    for (let i = 0; i < totalCubes; i++) {
+      const i3 = i * 3;
+      const dx = positions[i3] - targetPositions[i3];
+      const dy = positions[i3 + 1] - targetPositions[i3 + 1];
+      const dz = positions[i3 + 2] - targetPositions[i3 + 2];
+
+      if (dx * dx + dy * dy + dz * dz > thresholdSq || rotations[i3] !== 0 || rotations[i3 + 1] !== 0 || rotations[i3 + 2] !== 0) {
+        result.push({
+          i,
+          x: positions[i3],
+          y: positions[i3 + 1],
+          z: positions[i3 + 2],
+          rx: rotations[i3],
+          ry: rotations[i3 + 1],
+          rz: rotations[i3 + 2],
+        });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Restores disturbed cube positions from API data for challenge pages.
+   */
+  public restoreDisturbedState(savedOffsets: Array<{ i: number; x: number; y: number; z: number; rx: number; ry: number; rz: number }>) {
+    if (!savedOffsets || savedOffsets.length === 0) return;
+    const { positions, rotations, totalCubes } = this.grid;
+
+    for (const item of savedOffsets) {
+      if (item.i >= 0 && item.i < totalCubes) {
+        const i3 = item.i * 3;
+        positions[i3] = item.x;
+        positions[i3 + 1] = item.y;
+        positions[i3 + 2] = item.z;
+
+        rotations[i3] = item.rx;
+        rotations[i3 + 1] = item.ry;
+        rotations[i3 + 2] = item.rz;
+
+        this.activateCube(item.i);
+      }
+    }
+    this.isDisturbed = true;
   }
 
   /**

@@ -7,37 +7,36 @@ export default function OfflinePage() {
       style={{
         width: '100vw',
         height: '100vh',
-        backgroundColor: '#F7F6F2',
+        backgroundColor: 'var(--bg)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '2rem',
+        padding: '1rem',
         textAlign: 'center',
       }}
     >
       <div
         style={{
-          backgroundColor: '#FFFFFF',
-          border: '4px solid #1A1A1A',
-          boxShadow: '8px 8px 0 #1A1A1A',
-          padding: '2.5rem',
+          backgroundColor: 'var(--surface)',
+          border: '4px solid var(--ink)',
+          boxShadow: '6px 6px 0 var(--ink)',
+          padding: '2rem 1.25rem',
           maxWidth: '420px',
           width: '100%',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '1.5rem',
+          gap: '1.25rem',
         }}
       >
         <div
           style={{
-            fontFamily: 'monospace',
-            fontWeight: 900,
-            fontSize: '1.5rem',
-            letterSpacing: '0.15em',
-            color: '#1A1A1A',
-            borderBottom: '3px solid #1A1A1A',
+            fontFamily: 'var(--font-heading)',
+            fontSize: 'min(1.4rem, 6vw)',
+            letterSpacing: '-0.02em',
+            color: 'var(--ink)',
+            borderBottom: '3px solid var(--ink)',
             paddingBottom: '0.5rem',
             width: '100%',
           }}
@@ -47,11 +46,10 @@ export default function OfflinePage() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <h1
+            className="font-heading"
             style={{
-              fontFamily: 'sans-serif',
-              fontWeight: 800,
-              fontSize: '1.25rem',
-              color: '#1A1A1A',
+              fontSize: 'min(1.1rem, 5vw)',
+              color: 'var(--ink)',
               margin: 0,
             }}
           >
@@ -59,14 +57,15 @@ export default function OfflinePage() {
           </h1>
           <p
             style={{
-              fontFamily: 'sans-serif',
-              fontSize: '0.9rem',
-              color: '#666666',
+              fontFamily: 'var(--font-body)',
+              fontSize: '0.8rem',
+              color: 'var(--text-secondary)',
               margin: 0,
-              lineHeight: 1.4,
+              lineHeight: 1.5,
+              wordBreak: 'break-word',
             }}
           >
-            Reconnect to the internet to load new routes. Previously cached creations, Draw Mode, and Type Mode remain available offline.
+            You're offline right now. Your saved creations, drawing, and typing modes still work without internet.
           </p>
         </div>
 
@@ -74,16 +73,17 @@ export default function OfflinePage() {
           href="/"
           style={{
             display: 'inline-block',
-            backgroundColor: '#FF3B30',
+            backgroundColor: 'var(--accent)',
             color: '#FFFFFF',
-            fontFamily: 'sans-serif',
-            fontWeight: 700,
-            fontSize: '0.95rem',
-            padding: '0.85rem 1.75rem',
-            border: '3px solid #1A1A1A',
-            boxShadow: '4px 4px 0 #1A1A1A',
+            fontFamily: 'var(--font-heading)',
+            fontSize: '0.85rem',
+            padding: '0.75rem 1.5rem',
+            border: '3px solid var(--ink)',
+            boxShadow: '3px 3px 0 var(--ink)',
             textDecoration: 'none',
             cursor: 'pointer',
+            width: '100%',
+            maxWidth: '200px',
           }}
         >
           RETURN HOME

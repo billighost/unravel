@@ -40,7 +40,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       setCameraState('error');
-      setErrorMessage('Camera access is not supported by your browser.');
+      setErrorMessage("Camera isn't available on this browser.");
       return;
     }
 
@@ -75,7 +75,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
         setCameraState('active');
       } catch (fallbackErr: any) {
         setCameraState('error');
-        setErrorMessage('Camera permission denied or camera device unavailable.');
+        setErrorMessage("We couldn't open your camera. Check your permissions and try again.");
       }
     }
   };
@@ -177,9 +177,11 @@ export const CameraModal: React.FC<CameraModalProps> = ({
           }}
         >
           {/* Close button */}
-          <button
+          <motion.button
             onClick={handleClose}
-            aria-label="Close Camera Viewfinder"
+            aria-label="Close Camera"
+            whileHover={{ scale: 1.15 }}
+            whileTap={{ scale: 0.9 }}
             style={{
               position: 'absolute',
               top: '1rem',
@@ -192,11 +194,11 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             }}
           >
             <X size={22} />
-          </button>
+          </motion.button>
 
           <div style={{ textAlign: 'center' }}>
             <h2 className="font-heading" style={{ fontSize: '1.1rem', color: 'var(--ink)' }}>
-              CAMERA VIEWFINDER
+              CAMERA
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
               Point your camera and take a photo
@@ -242,16 +244,16 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                 style={{
                   padding: '1.5rem',
                   textAlign: 'center',
-                  color: '#FF3B30',
+                  color: 'var(--accent)',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   gap: '0.75rem',
                 }}
               >
-                <AlertCircle size={36} color="#FF3B30" />
-                <p style={{ fontFamily: 'var(--font-heading)', fontSize: '0.8rem' }}>
-                  {errorMessage || 'Camera access unavailable'}
+                <AlertCircle size={36} color="var(--accent)" />
+                <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  {errorMessage || "We couldn't open your camera."}
                 </p>
               </div>
             )}

@@ -160,6 +160,21 @@ Distributed under the MIT License. See `LICENSE` for more details.
 
 ---
 
+## 🛡️ Moderation Architecture & Security Disclaimer
+
+> [!WARNING]
+> **Community Gallery Moderation Notice & Explicit Scope Limitation**
+> 
+> The community gallery employs a **threshold-based user reporting system**:
+> - Each public creation features a single-tap **Report** button (`POST /api/creations/:id/report`).
+> - When a creation accumulates **3 reports**, `is_hidden` is automatically set to `TRUE`, instantly removing it from the public gallery listing and returning a 404/unavailable response on direct challenge links.
+> 
+> **Explicit Scope Limitation**: This pass does **NOT** include automated pre-screening (e.g. image moderation API checks) before content goes public, nor a manual pre-approval queue. Inappropriate uploads may be briefly visible in the community gallery until threshold reports hide them.
+> 
+> **Recommended Production Enhancement**: Before promoting the community gallery to wide public traffic, integrate **Google Cloud Vision SafeSearch** (or a similar automated pre-screening API / manual review queue) into `POST /api/creations` to screen uploaded thumbnails prior to public listing.
+
+---
+
 <p center="true">
   Made with ❤️ using Next.js, Three.js, and TypeScript.
 </p>
