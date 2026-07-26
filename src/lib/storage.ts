@@ -178,30 +178,44 @@ export function generateThumbnailDataUrl(gridData: SavedGridData): string {
   if (typeof document === 'undefined') return '';
 
   const { cols, rows, colors } = gridData;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.min(cols, 120);
-  canvas.height = Math.min(rows, 80);
+  if (cols <= 0 || rows <= 0) return '';
 
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
+  try {
+    // 1. Create a 1:1 canvas of actual grid size
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = cols;
+    tempCanvas.height = rows;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return '';
 
-  const cellWidth = canvas.width / cols;
-  const cellHeight = canvas.height / rows;
+    const imgData = tempCtx.createImageData(cols, rows);
+    const data = imgData.data;
 
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const i3 = (r * cols + c) * 3;
-      const red = colors[i3] !== undefined ? Math.round(colors[i3] * 255) : 0;
-      const green = colors[i3 + 1] !== undefined ? Math.round(colors[i3 + 1] * 255) : 0;
-      const blue = colors[i3 + 2] !== undefined ? Math.round(colors[i3 + 2] * 255) : 0;
-
-      ctx.fillStyle = `rgb(${red},${green},${blue})`;
-      ctx.fillRect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
+    for (let i = 0; i < cols * rows; i++) {
+      const i3 = i * 3;
+      const i4 = i * 4;
+      data[i4] = colors[i3] !== undefined ? Math.round(colors[i3] * 255) : 0;
+      data[i4 + 1] = colors[i3 + 1] !== undefined ? Math.round(colors[i3 + 1] * 255) : 0;
+      data[i4 + 2] = colors[i3 + 2] !== undefined ? Math.round(colors[i3 + 2] * 255) : 0;
+      data[i4 + 3] = 255;
     }
-  }
+    tempCtx.putImageData(imgData, 0, 0);
 
-  return canvas.toDataURL('image/png');
+    // 2. Scale it down/up onto the target thumbnail size
+    const targetW = Math.min(cols, 120);
+    const targetH = Math.min(rows, 80);
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return tempCanvas.toDataURL('image/png');
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tempCanvas, 0, 0, targetW, targetH);
+
+    return canvas.toDataURL('image/png');
+  } catch (err) {
+    console.error('Failed to generate thumbnail data URL:', err);
+    return '';
+  }
 }

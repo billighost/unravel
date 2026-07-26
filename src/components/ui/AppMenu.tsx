@@ -445,6 +445,8 @@ export const AppMenu: React.FC<AppMenuProps> = ({
                   top: '52px',
                   right: 0,
                   width: '280px',
+                  maxHeight: 'calc(100vh - 70px)',
+                  overflowY: 'auto',
                   backgroundColor: 'var(--surface)',
                   border: '3px solid var(--ink)',
                   boxShadow: '4px 4px 0 var(--ink)',

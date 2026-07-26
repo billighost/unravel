@@ -3,10 +3,8 @@
  * 
  * Captures live WebGL canvas animation streams using MediaRecorder API.
  * Optimized for performance: 30fps stream cap, un-timesliced batch encoding to avoid main thread hangs,
- * native MP4 support where available, and dynamic lazy-loaded MP4 fallback transcoding.
+ * native MP4 support where available, and Cloudinary server-side MP4 transcoding fallback.
  */
-
-import { qualityTierManager } from './qualityTier';
 
 export type VideoFormat = 'webm' | 'mp4';
 
@@ -91,44 +89,41 @@ export class VideoRecorder {
 
   /**
    * Stops recording and resolves with the generated video Blob.
-   * If MP4 was requested on a browser without native support, lazy-loads the transcoder.
+   * If MP4 was requested on a browser without native support, performs Cloudinary server-side transcode.
    */
-  public stop(onProgress?: (progress: number) => void): Promise<{ blob: Blob | null; format: VideoFormat }> {
+  public stop(onProgress?: (progress: number) => void): Promise<{ blob: Blob | null; format: VideoFormat; isNative: boolean }> {
     return new Promise((resolve) => {
       if (!this.mediaRecorder || !this.recording) {
         this.recording = false;
-        resolve({ blob: null, format: this.targetFormat });
+        resolve({ blob: null, format: this.targetFormat, isNative: this.nativeMp4Supported });
         return;
       }
 
       const requestedFormat = this.targetFormat;
+      const isNative = requestedFormat === 'mp4' ? this.nativeMp4Supported : true;
 
       this.mediaRecorder.onstop = async () => {
         this.recording = false;
-        const mimeType = this.mediaRecorder?.mimeType || (requestedFormat === 'mp4' ? 'video/mp4' : 'video/webm');
+        const mimeType = this.mediaRecorder?.mimeType || (requestedFormat === 'mp4' && this.nativeMp4Supported ? 'video/mp4' : 'video/webm');
         let blob = new Blob(this.recordedChunks, { type: mimeType });
         this.mediaRecorder = null;
 
-        // Handle MP4 fallback transcode if requested but not natively supported
+        // Handle MP4 server-side transcode via Cloudinary if requested but not natively supported
         if (requestedFormat === 'mp4' && !this.nativeMp4Supported) {
-          const config = qualityTierManager.getConfig();
-          if (config.transcodeFallbackAllowed) {
-            try {
-              // Lazy-load transcoder module only when needed
-              const { transcodeWebMToMP4 } = await import('./transcoder');
-              blob = await transcodeWebMToMP4(blob, onProgress);
-              resolve({ blob, format: 'mp4' });
-              return;
-            } catch (err) {
-              console.error('MP4 transcode failed, falling back to WebM:', err);
-            }
+          try {
+            const { transcodeWebMToMP4 } = await import('./transcoder');
+            blob = await transcodeWebMToMP4(blob, onProgress);
+            const actualFormat = blob.type === 'video/mp4' ? 'mp4' : 'webm';
+            resolve({ blob, format: actualFormat, isNative: false });
+            return;
+          } catch (err) {
+            console.error('Cloudinary server-side MP4 transcode failed, falling back to WebM:', err);
+            resolve({ blob, format: 'webm', isNative: false });
+            return;
           }
-          // On low quality tier or if transcode failed, fallback to WebM gracefully
-          resolve({ blob, format: 'webm' });
-          return;
         }
 
-        resolve({ blob, format: requestedFormat });
+        resolve({ blob, format: requestedFormat, isNative });
       };
 
       try {
@@ -136,7 +131,7 @@ export class VideoRecorder {
       } catch (err) {
         console.error('Error stopping MediaRecorder:', err);
         this.recording = false;
-        resolve({ blob: null, format: requestedFormat });
+        resolve({ blob: null, format: requestedFormat, isNative });
       }
     });
   }

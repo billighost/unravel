@@ -5,8 +5,26 @@ import { sessionPhysicsConfig } from '@/lib/sessionPhysics';
 
 // Haptic vibration throttling
 let lastVibrateTime = 0;
-function triggerHaptic(durationMs: number = 12) {
+let activePointerCount = 0;
+
+if (typeof window !== 'undefined') {
+  const handlePointerDown = () => {
+    activePointerCount++;
+  };
+  const handlePointerUp = () => {
+    activePointerCount = Math.max(0, activePointerCount - 1);
+  };
+  window.addEventListener('pointerdown', handlePointerDown, { passive: true });
+  window.addEventListener('touchstart', handlePointerDown, { passive: true });
+  window.addEventListener('pointerup', handlePointerUp, { passive: true });
+  window.addEventListener('touchend', handlePointerUp, { passive: true });
+  window.addEventListener('pointercancel', handlePointerUp, { passive: true });
+  window.addEventListener('touchcancel', handlePointerUp, { passive: true });
+}
+
+function triggerHaptic(durationMs: number = 12, isDirectTap: boolean = false) {
   if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+    if (!isDirectTap && activePointerCount <= 0) return;
     const now = performance.now();
     if (now - lastVibrateTime > 120) {
       lastVibrateTime = now;
@@ -284,7 +302,7 @@ export class CubePhysicsEngine {
 
         if (impulseMag > 1.0 && factor > 0.3) {
           soundEngine.playCubeKnock(impulseMag);
-          triggerHaptic(12);
+          triggerHaptic(12, false);
         }
       }
     }
@@ -341,7 +359,7 @@ export class CubePhysicsEngine {
 
     this.isDisturbed = true;
     soundEngine.playCubeKnock(3.5);
-    triggerHaptic(20);
+    triggerHaptic(20, true);
   }
 
   /**

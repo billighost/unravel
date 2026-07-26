@@ -1,13 +1,8 @@
-import * as MP4Muxer from 'mp4-muxer';
-
 /**
- * LAZY-LOADED MP4 TRANSCODER MODULE
+ * CLOUDINARY SERVER-SIDE MP4 TRANSCODER UTILITY
  * 
- * Converts a WebM video Blob into a standardized MP4 (H.264/AVC) Blob
- * using browser-native WebCodecs API and mp4-muxer.
- * 
- * Only loaded dynamically when the user selects MP4 export on a browser
- * lacking native MediaRecorder video/mp4 output.
+ * Converts a recorded WebM video Blob into a standardized MP4 Blob using Cloudinary server-side transcoding.
+ * Light on the client bundle, eliminating ffmpeg.wasm and mp4-muxer client-side encoding.
  */
 export async function transcodeWebMToMP4(
   webmBlob: Blob,
@@ -15,101 +10,88 @@ export async function transcodeWebMToMP4(
 ): Promise<Blob> {
   if (typeof window === 'undefined') return webmBlob;
 
-  const video = document.createElement('video');
-  video.src = URL.createObjectURL(webmBlob);
-  video.muted = true;
-  video.playsInline = true;
-
-  await new Promise<void>((resolve, reject) => {
-    video.onloadedmetadata = () => resolve();
-    video.onerror = () => reject(new Error('Failed to load WebM video for transcoding'));
-  });
-
-  const rawW = video.videoWidth || 1280;
-  const rawH = video.videoHeight || 720;
-  // Ensure even dimensions required for H.264
-  const width = rawW % 2 === 0 ? rawW : rawW - 1;
-  const height = rawH % 2 === 0 ? rawH : rawH - 1;
-  const duration = Math.max(video.duration || 1, 0.1);
-
-  const muxer = new MP4Muxer.Muxer({
-    target: new MP4Muxer.ArrayBufferTarget(),
-    video: {
-      codec: 'avc',
-      width,
-      height,
-    },
-    fastStart: 'in-memory',
-  });
-
-  // Check WebCodecs availability
-  if (typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined') {
-    let encoderError: any = null;
-
-    const videoEncoder = new VideoEncoder({
-      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-      error: (e) => {
-        console.error('WebCodecs VideoEncoder error:', e);
-        encoderError = e;
-      },
-    });
-
-    videoEncoder.configure({
-      codec: 'avc1.42001f', // H.264 Baseline Profile
-      width,
-      height,
-      bitrate: 3_500_000,
-      framerate: 30,
-    });
-
-    const fps = 30;
-    const totalFrames = Math.max(Math.ceil(duration * fps), 1);
-    const frameInterval = 1 / fps;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-
-    for (let i = 0; i < totalFrames; i++) {
-      if (encoderError) break;
-
-      const time = i * frameInterval;
-      video.currentTime = time;
-
-      await new Promise<void>((resolve) => {
-        const onSeeked = () => {
-          video.removeEventListener('seeked', onSeeked);
-          resolve();
-        };
-        video.addEventListener('seeked', onSeeked);
-      });
-
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, width, height);
-        const frame = new VideoFrame(canvas, { timestamp: Math.round(time * 1_000_000) });
-        const keyFrame = i % 30 === 0;
-        videoEncoder.encode(frame, { keyFrame });
-        frame.close();
-      }
-
-      if (onProgress) {
-        onProgress(Math.min((i + 1) / totalFrames, 0.99));
-      }
-    }
-
-    if (!encoderError) {
-      await videoEncoder.flush();
-      muxer.finalize();
-      const { buffer } = muxer.target;
-      URL.revokeObjectURL(video.src);
-      if (onProgress) onProgress(1.0);
-      return new Blob([buffer], { type: 'video/mp4' });
-    }
+  // Check offline state
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    console.warn('Offline: cannot perform Cloudinary server-side MP4 transcode');
+    return webmBlob;
   }
 
-  // Fallback: If WebCodecs encoder is unavailable or failed, return original blob with mp4 mime header
-  URL.revokeObjectURL(video.src);
-  if (onProgress) onProgress(1.0);
-  return new Blob([webmBlob], { type: 'video/mp4' });
+  try {
+    if (onProgress) onProgress(0.15);
+
+    // 1. Get upload signature from server API
+    const signRes = await fetch('/api/cloudinary/sign');
+    if (!signRes.ok) {
+      console.warn('Cloudinary signature request failed');
+      return webmBlob;
+    }
+
+    const signData = await signRes.json();
+    if (!signData.enabled) {
+      console.warn('Cloudinary is not enabled or configured on the server');
+      return webmBlob;
+    }
+
+    if (onProgress) onProgress(0.35);
+
+    // 2. Prepare FormData for direct video upload
+    const formData = new FormData();
+    formData.append('file', webmBlob, `unravel-recording-${Date.now()}.webm`);
+    formData.append('api_key', signData.api_key);
+    formData.append('timestamp', signData.timestamp.toString());
+    formData.append('signature', signData.signature);
+    formData.append('folder', signData.folder);
+
+    // 3. Upload WebM to Cloudinary video upload endpoint
+    const uploadRes = await fetch(
+      `https://api.cloudinary.com/v1_1/${signData.cloud_name}/video/upload`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
+
+    if (!uploadRes.ok) {
+      console.warn('Cloudinary direct video upload failed with status:', uploadRes.status);
+      return webmBlob;
+    }
+
+    if (onProgress) onProgress(0.65);
+
+    const uploadData = await uploadRes.json();
+    const secureUrl = uploadData.secure_url;
+
+    if (!secureUrl) {
+      console.warn('Cloudinary video upload response contained no secure_url');
+      return webmBlob;
+    }
+
+    // 4. Construct Cloudinary transformation URL for MP4 format
+    let mp4Url = secureUrl;
+    if (secureUrl.includes('/video/upload/')) {
+      const parts = secureUrl.split('/video/upload/');
+      const pathWithoutExt = parts[1].replace(/\.[^/.]+$/, '');
+      mp4Url = `${parts[0]}/video/upload/f_mp4,q_auto/${pathWithoutExt}.mp4`;
+    } else {
+      mp4Url = secureUrl.replace(/\.[^/.]+$/, '.mp4');
+    }
+
+    if (onProgress) onProgress(0.85);
+
+    // 5. Fetch transcoded MP4 blob from Cloudinary
+    const mp4Res = await fetch(mp4Url);
+    if (!mp4Res.ok) {
+      console.warn('Fetch for Cloudinary transcoded MP4 failed:', mp4Res.status);
+      return webmBlob;
+    }
+
+    const mp4Blob = await mp4Res.blob();
+    if (onProgress) onProgress(1.0);
+
+    return new Blob([mp4Blob], { type: 'video/mp4' });
+  } catch (err) {
+    console.error('Error during Cloudinary server-side MP4 transcode:', err);
+    if (onProgress) onProgress(1.0);
+    return webmBlob;
+  }
 }

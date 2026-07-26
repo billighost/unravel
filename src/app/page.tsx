@@ -178,13 +178,23 @@ export default function Home() {
     
     window.dispatchEvent(new CustomEvent('unravel-recording-stop'));
     setIsRecording(false);
+    setTranscodeProgress(0.05);
 
-    const { blob, format } = await videoRecorder.stop((progress) => {
+    const { blob, format, isNative } = await videoRecorder.stop((progress) => {
       setTranscodeProgress(progress);
     });
 
     if (blob) {
       const ext = format === 'mp4' ? 'mp4' : 'webm';
+
+      if (format !== 'mp4' && !isNative) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          showToast("Offline mode: MP4 conversion requires internet connection. Saved as WebM.", 'info');
+        } else {
+          showToast("Server transcode unavailable. Saved as WebM instead.", 'info');
+        }
+      }
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.download = `unravel-moment-${Date.now()}.${ext}`;
@@ -205,14 +215,27 @@ export default function Home() {
     const canvas = document.querySelector('canvas') as HTMLCanvasElement;
     if (!canvas) return;
 
-    canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      const file = new File([blob], `unravel-art-${Date.now()}.png`, { type: 'image/png' });
-      const shared = await shareFile(file, 'My Unravel Creation');
+    try {
+      const dataUrl = canvas.toDataURL('image/png');
+      const arr = dataUrl.split(',');
+      const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const file = new File([u8arr], `unravel-art-${Date.now()}.png`, { type: mime });
+      
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://unravel.app';
+      const shared = await shareFile(file, 'My Unravel Creation', origin, 'Made with Unravel — try it:');
       if (shared) {
         announceToScreenReader('Artwork shared successfully');
       }
-    }, 'image/png');
+    } catch (err) {
+      console.error('Failed to share artwork:', err);
+      showToast("Couldn't share artwork — try again", 'error');
+    }
   };
 
   // Listen for revert completion to automatically finalize video recording
@@ -401,7 +424,7 @@ export default function Home() {
                   CONVERTING TO MP4...
                 </h3>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Encoding video frames. Please wait a moment.
+                  Uploading & transcoding video via Cloudinary. Please wait...
                 </p>
               </>
             )}

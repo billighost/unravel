@@ -13,6 +13,7 @@ import { soundEngine } from '@/lib/audio/soundEngine';
 import { showToast } from '@/components/ui/Toast';
 import { announceToScreenReader } from '@/components/ui/AccessibilityAnnouncer';
 import { getOptimizedCloudinaryUrl } from '@/lib/cloudinaryClient';
+import { ReportConfirmModal } from '@/components/ui/ReportConfirmModal';
 
 interface CreationItem {
   id: string;
@@ -28,6 +29,7 @@ export default function GalleryPage() {
   const [error, setError] = useState<string | null>(null);
   const [reportedMap, setReportedMap] = useState<Record<string, boolean>>({});
   const [reportingMap, setReportingMap] = useState<Record<string, boolean>>({});
+  const [confirmingReportId, setConfirmingReportId] = useState<string | null>(null);
   const [thumbnailSize, setThumbnailSize] = useState({ width: 320, height: 240 });
 
   useEffect(() => {
@@ -88,12 +90,15 @@ export default function GalleryPage() {
     };
   }, []);
 
-  const handleReport = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
+  const handleReport = async (id: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     soundEngine.playUIClick();
     if (reportedMap[id] || reportingMap[id]) return;
 
+    setConfirmingReportId(null);
     const deviceId = getDeviceId();
     setReportingMap((prev) => ({ ...prev, [id]: true }));
     showToast('Report submitted. Thank you!', 'success');
@@ -254,7 +259,14 @@ export default function GalleryPage() {
                   </Link>
 
                   <Button
-                    onClick={(e) => handleReport(item.id, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      soundEngine.playUIClick();
+                      if (!reportedMap[item.id] && !reportingMap[item.id]) {
+                        setConfirmingReportId(item.id);
+                      }
+                    }}
                     isLoading={reportingMap[item.id]}
                     isSuccess={reportedMap[item.id]}
                     loadingText="REPORTING"
@@ -281,6 +293,12 @@ export default function GalleryPage() {
           </div>
         )}
       </div>
+
+      <ReportConfirmModal
+        isOpen={confirmingReportId !== null}
+        onClose={() => setConfirmingReportId(null)}
+        onConfirm={() => handleReport(confirmingReportId!)}
+      />
     </motion.main>
   );
 }

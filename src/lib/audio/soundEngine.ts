@@ -43,6 +43,21 @@ class SoundEngine {
       if (storedMute !== null) {
         this.isMuted = storedMute === 'true';
       }
+
+      const handleFirstInteraction = () => {
+        this.initContext();
+        cleanup();
+      };
+      const cleanup = () => {
+        window.removeEventListener('click', handleFirstInteraction);
+        window.removeEventListener('pointerdown', handleFirstInteraction);
+        window.removeEventListener('touchstart', handleFirstInteraction);
+        window.removeEventListener('keydown', handleFirstInteraction);
+      };
+      window.addEventListener('click', handleFirstInteraction, { passive: true });
+      window.addEventListener('pointerdown', handleFirstInteraction, { passive: true });
+      window.addEventListener('touchstart', handleFirstInteraction, { passive: true });
+      window.addEventListener('keydown', handleFirstInteraction, { passive: true });
     }
   }
 
