@@ -33,9 +33,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const creation = await getCreationById(id);
     profiler.stop('db', 'Database Query');
 
-    if (!creation || creation.is_hidden) {
+    if (!creation) {
       return NextResponse.json(
-        { error: 'This content is no longer available.', is_hidden: true },
+        { error: 'Creation not found.' },
         { status: 404 }
       );
     }

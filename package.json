@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:migrate": "npx tsx scripts/migrate.ts",
+    "db:seed:test": "npx tsx scripts/seed-test-db.ts",
+    "test:api": "vitest run tests/"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -28,8 +31,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^16.4.7",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
-    "typescript": "^5"
+    "tsx": "^4.19.0",
+    "typescript": "^5",
+    "vitest": "^3.2.0"
   }
 }
