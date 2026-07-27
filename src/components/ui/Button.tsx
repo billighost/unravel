@@ -13,6 +13,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   loadingText?: string;
   successText?: string;
   errorText?: string;
+  progress?: number;
   children: React.ReactNode;
 }
 
@@ -24,12 +25,35 @@ export const Button: React.FC<ButtonProps> = ({
   loadingText,
   successText,
   errorText,
+  progress,
   children,
   className = '',
   style,
   ...props
 }) => {
   const isPrimary = variant === 'primary';
+  const [simulatedProgress, setSimulatedProgress] = React.useState(0);
+
+  React.useEffect(() => {
+    let intervalId: any;
+    if (isLoading) {
+      setSimulatedProgress(0);
+      const startTime = Date.now();
+      const duration = 2500; // 2.5 seconds to reach 90%
+      intervalId = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const pct = Math.min(90, Math.round((elapsed / duration) * 90));
+        setSimulatedProgress(pct);
+      }, 50);
+    } else if (isSuccess) {
+      setSimulatedProgress(100);
+    } else {
+      setSimulatedProgress(0);
+    }
+    return () => clearInterval(intervalId);
+  }, [isLoading, isSuccess]);
+
+  const activeProgress = progress !== undefined ? progress : simulatedProgress;
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (isLoading || isSuccess || props.disabled) {
@@ -79,6 +103,8 @@ export const Button: React.FC<ButtonProps> = ({
         userSelect: 'none',
         outline: 'none',
         opacity: isLoading ? 0.85 : props.disabled ? 0.5 : 1,
+        position: 'relative',
+        overflow: 'hidden',
         ...style,
       }}
       disabled={isLoading || isSuccess || props.disabled}
@@ -86,24 +112,44 @@ export const Button: React.FC<ButtonProps> = ({
       onClick={handleClick}
       {...(props as any)}
     >
-      {isLoading ? (
-        <>
-          <Loader2 size={18} className="animate-spin" style={{ flexShrink: 0 }} />
-          {loadingText ? <span>{loadingText}</span> : children}
-        </>
-      ) : isSuccess ? (
-        <>
-          <Check size={18} style={{ flexShrink: 0 }} />
-          {successText ? <span>{successText}</span> : children}
-        </>
-      ) : isError ? (
-        <>
-          <AlertTriangle size={18} style={{ flexShrink: 0 }} />
-          {errorText ? <span>{errorText}</span> : children}
-        </>
-      ) : (
-        children
+      {/* Bottom Progress Bar */}
+      {(isLoading || progress !== undefined) && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            height: '5px',
+            backgroundColor: '#34C759',
+            width: `${activeProgress}%`,
+            transition: 'width 0.1s linear',
+            zIndex: 1,
+          }}
+        />
       )}
+
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.75rem', zIndex: 2 }}>
+        {isLoading ? (
+          <>
+            <Loader2 size={18} className="animate-spin" style={{ flexShrink: 0 }} />
+            <span>
+              {loadingText ? loadingText : children} {activeProgress > 0 ? `(${activeProgress}%)` : ''}
+            </span>
+          </>
+        ) : isSuccess ? (
+          <>
+            <Check size={18} style={{ flexShrink: 0 }} />
+            {successText ? <span>{successText}</span> : children}
+          </>
+        ) : isError ? (
+          <>
+            <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+            {errorText ? <span>{errorText}</span> : children}
+          </>
+        ) : (
+          children
+        )}
+      </span>
     </motion.button>
   );
 };

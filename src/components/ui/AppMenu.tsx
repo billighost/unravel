@@ -10,6 +10,7 @@ import { showToast } from '@/components/ui/Toast';
 import { Button } from './Button';
 import { AccountModal } from './AccountModal';
 import { useAppStore } from '@/store/useAppStore';
+import Link from 'next/link';
 
 interface AppMenuProps {
   onOpenGallery?: () => void;
@@ -290,7 +291,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
         </button>
 
         {/* Community Gallery Link */}
-        <a
+        <Link
           href="/gallery"
           onClick={() => setIsOpen(false)}
           style={{ textDecoration: 'none' }}
@@ -313,7 +314,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
               PUBLIC GALLERY
             </span>
           </button>
-        </a>
+        </Link>
 
         {/* Mute Row */}
         <button
@@ -416,11 +417,11 @@ export const AppMenu: React.FC<AppMenuProps> = ({
 
       {/* Footer Legal Links */}
       <div style={{ borderTop: '2px solid var(--border)', paddingTop: '0.75rem', marginTop: '0.75rem', display: 'flex', justifyContent: 'center', gap: '0.75rem' }}>
-        <a href="/about" onClick={() => setIsOpen(false)} style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)', textDecoration: 'none' }}>ABOUT</a>
+        <Link href="/about" onClick={() => setIsOpen(false)} style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)', textDecoration: 'none' }}>ABOUT</Link>
         <span style={{ fontSize: '0.65rem', color: 'var(--border)' }}>|</span>
-        <a href="/terms" onClick={() => setIsOpen(false)} style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)', textDecoration: 'none' }}>TERMS</a>
+        <Link href="/terms" onClick={() => setIsOpen(false)} style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)', textDecoration: 'none' }}>TERMS</Link>
         <span style={{ fontSize: '0.65rem', color: 'var(--border)' }}>|</span>
-        <a href="/privacy" onClick={() => setIsOpen(false)} style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)', textDecoration: 'none' }}>PRIVACY</a>
+        <Link href="/privacy" onClick={() => setIsOpen(false)} style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)', textDecoration: 'none' }}>PRIVACY</Link>
       </div>
     </div>
   );

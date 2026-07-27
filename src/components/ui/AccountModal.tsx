@@ -11,6 +11,7 @@ import { announceToScreenReader } from '@/components/ui/AccessibilityAnnouncer';
 import { Button } from './Button';
 import { CustomKeyboard } from './CustomKeyboard';
 import { CustomKeypad } from './CustomKeypad';
+import Link from 'next/link';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -424,13 +425,13 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                 {mode === 'signup' && (
                   <p style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: '1.4' }}>
                     By continuing, you agree to our{' '}
-                    <a href="/terms" onClick={handleClose} style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
+                    <Link href="/terms" onClick={handleClose} style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
                       Terms
-                    </a>{' '}
+                    </Link>{' '}
                     &{' '}
-                    <a href="/privacy" onClick={handleClose} style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
+                    <Link href="/privacy" onClick={handleClose} style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
                       Privacy Policy
-                    </a>.
+                    </Link>.
                   </p>
                 )}
 

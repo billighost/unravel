@@ -76,7 +76,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   onShareNative,
 }) => {
   const [canShare, setCanShare] = useState(false);
-  const [selectedVideoFormat, setSelectedVideoFormat] = useState<VideoFormat>('webm');
+  const [selectedVideoFormat, setSelectedVideoFormat] = useState<VideoFormat>('mp4');
   const [isNativeMp4, setIsNativeMp4] = useState(false);
   const [isFallbackAllowed, setIsFallbackAllowed] = useState(true);
   const [copiedChallenge, setCopiedChallenge] = useState(false);
