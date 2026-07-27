@@ -11,7 +11,7 @@ import { SampledGridResult } from '@/lib/demoGenerator';
 export interface SavedGridData {
   cols: number;
   rows: number;
-  colors: Float32Array | number[];
+  colors: Float32Array | number[] | string;
 }
 
 export interface SavedCreation {
@@ -58,16 +58,68 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 /**
- * Converts a SavedGridData object (which may have number[] from JSON/IndexedDB)
+ * Compresses Float32Array colors into a single hex string for efficient API transmission.
+ */
+export function compressColors(colors: Float32Array | number[]): string {
+  let hex = '';
+  for (let i = 0; i < colors.length; i++) {
+    const val = Math.min(255, Math.max(0, Math.round(colors[i] * 255)));
+    hex += val.toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+/**
+ * Decompresses a hex string representation back to a Float32Array.
+ */
+export function decompressColors(hex: string): Float32Array {
+  const colors = new Float32Array(hex.length / 2);
+  for (let i = 0; i < colors.length; i++) {
+    colors[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16) / 255;
+  }
+  return colors;
+}
+
+/**
+ * Compresses disturbed positions objects into a flat array of rounded numbers.
+ */
+export function compressDisturbedPositions(disturbed: Array<{ i: number; x: number; y: number; z: number; rx: number; ry: number; rz: number }>): number[] {
+  const result: number[] = [];
+  for (let i = 0; i < disturbed.length; i++) {
+    const item = disturbed[i];
+    result.push(
+      item.i,
+      Math.round(item.x * 1000) / 1000,
+      Math.round(item.y * 1000) / 1000,
+      Math.round(item.z * 1000) / 1000,
+      Math.round(item.rx * 1000) / 1000,
+      Math.round(item.ry * 1000) / 1000,
+      Math.round(item.rz * 1000) / 1000
+    );
+  }
+  return result;
+}
+
+/**
+ * Converts a SavedGridData object (which may have number[] or hex string from JSON/IndexedDB)
  * into a typed SampledGridResult containing Float32Array.
  */
 export function toSampledGridResult(grid: SavedGridData): SampledGridResult {
+  let finalColors: Float32Array;
+  if (typeof grid.colors === 'string') {
+    finalColors = decompressColors(grid.colors);
+  } else if (grid.colors instanceof Float32Array) {
+    finalColors = grid.colors;
+  } else {
+    finalColors = new Float32Array(grid.colors);
+  }
   return {
     cols: grid.cols,
     rows: grid.rows,
-    colors: grid.colors instanceof Float32Array ? grid.colors : new Float32Array(grid.colors),
+    colors: finalColors,
   };
 }
+
 
 /**
  * Persists the latest undisturbed creation grid to IndexedDB for auto-resume.

@@ -10,7 +10,7 @@ import { qualityTierManager } from '@/lib/qualityTier';
 import { t } from '@/lib/i18n/strings';
 import { useAppStore } from '@/store/useAppStore';
 import { getDeviceId } from '@/lib/deviceId';
-import { generateThumbnailDataUrl } from '@/lib/storage';
+import { generateThumbnailDataUrl, compressColors, compressDisturbedPositions } from '@/lib/storage';
 import { showToast } from '@/components/ui/Toast';
 import { announceToScreenReader } from '@/components/ui/AccessibilityAnnouncer';
 import { uploadDirectToCloudinary } from '@/lib/cloudinaryClient';
@@ -178,9 +178,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           grid_data: {
             cols: gridData.cols,
             rows: gridData.rows,
-            colors: Array.from(gridData.colors),
+            colors: compressColors(gridData.colors),
           },
-          disturbed_positions: disturbed,
+          disturbed_positions: compressDisturbedPositions(disturbed),
           thumbnail,
           source_mode: mode,
           is_public: false,
@@ -250,9 +250,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           grid_data: {
             cols: gridData.cols,
             rows: gridData.rows,
-            colors: Array.from(gridData.colors),
+            colors: compressColors(gridData.colors),
           },
-          disturbed_positions: disturbed,
+          disturbed_positions: compressDisturbedPositions(disturbed),
           thumbnail,
           source_mode: mode,
           is_public: true,

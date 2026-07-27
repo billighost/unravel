@@ -182,22 +182,42 @@ export class CubePhysicsEngine {
   /**
    * Restores disturbed cube positions from API data for challenge pages.
    */
-  public restoreDisturbedState(savedOffsets: Array<{ i: number; x: number; y: number; z: number; rx: number; ry: number; rz: number }>) {
+  public restoreDisturbedState(savedOffsets: any) {
     if (!savedOffsets || savedOffsets.length === 0) return;
     const { positions, rotations, totalCubes } = this.grid;
 
-    for (const item of savedOffsets) {
-      if (item.i >= 0 && item.i < totalCubes) {
-        const i3 = item.i * 3;
-        positions[i3] = item.x;
-        positions[i3 + 1] = item.y;
-        positions[i3 + 2] = item.z;
+    if (Array.isArray(savedOffsets) && typeof savedOffsets[0] === 'number') {
+      // Decode flat array format: [i, x, y, z, rx, ry, rz, ...]
+      for (let idx = 0; idx < savedOffsets.length; idx += 7) {
+        const i = savedOffsets[idx];
+        if (i >= 0 && i < totalCubes) {
+          const i3 = i * 3;
+          positions[i3] = savedOffsets[idx + 1];
+          positions[i3 + 1] = savedOffsets[idx + 2];
+          positions[i3 + 2] = savedOffsets[idx + 3];
 
-        rotations[i3] = item.rx;
-        rotations[i3 + 1] = item.ry;
-        rotations[i3 + 2] = item.rz;
+          rotations[i3] = savedOffsets[idx + 4];
+          rotations[i3 + 1] = savedOffsets[idx + 5];
+          rotations[i3 + 2] = savedOffsets[idx + 6];
 
-        this.activateCube(item.i);
+          this.activateCube(i);
+        }
+      }
+    } else {
+      // Backward compatibility for array of objects
+      for (const item of savedOffsets) {
+        if (item.i >= 0 && item.i < totalCubes) {
+          const i3 = item.i * 3;
+          positions[i3] = item.x;
+          positions[i3 + 1] = item.y;
+          positions[i3 + 2] = item.z;
+
+          rotations[i3] = item.rx;
+          rotations[i3 + 1] = item.ry;
+          rotations[i3 + 2] = item.rz;
+
+          this.activateCube(item.i);
+        }
       }
     }
     this.isDisturbed = true;

@@ -72,40 +72,10 @@ export const TypeMode: React.FC = () => {
   const [text, setText] = useState('');
   const [selectedFont, setSelectedFont] = useState<FontOption>(FONT_OPTIONS[0]);
   const [isFontPickerOpen, setIsFontPickerOpen] = useState(false);
-  const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [fontsLoaded, setFontsLoaded] = useState(true);
   const previewRef = useRef<HTMLDivElement>(null);
   const [previewFontSize, setPreviewFontSize] = useState(48);
 
-  // Lazy-load Google Fonts on mount
-  useEffect(() => {
-    const loadedIds = new Set<string>();
-
-    FONT_OPTIONS.forEach((font) => {
-      if (!font.googleUrl) return;
-      const linkId = `font-link-${font.id}`;
-      if (document.getElementById(linkId)) {
-        loadedIds.add(font.id);
-        return;
-      }
-
-      const link = document.createElement('link');
-      link.id = linkId;
-      link.rel = 'stylesheet';
-      link.href = font.googleUrl;
-      link.onload = () => {
-        loadedIds.add(font.id);
-        if (loadedIds.size >= FONT_OPTIONS.filter((f) => f.googleUrl).length) {
-          setFontsLoaded(true);
-        }
-      };
-      document.head.appendChild(link);
-    });
-
-    // If no external fonts, mark as loaded
-    if (FONT_OPTIONS.every((f) => !f.googleUrl)) {
-      setFontsLoaded(true);
-    }
-  }, []);
 
   // Recompute preview font size whenever text or font changes
   useEffect(() => {

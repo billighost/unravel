@@ -14,6 +14,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { getDeviceId } from '@/lib/deviceId';
 import { SampledGridResult } from '@/lib/demoGenerator';
 import { showToast } from '@/components/ui/Toast';
+import { compressDisturbedPositions, decompressColors } from '@/lib/storage';
 import { announceToScreenReader } from '@/components/ui/AccessibilityAnnouncer';
 import { uploadDirectToCloudinary } from '@/lib/cloudinaryClient';
 import { shareOrCopyLink } from '@/lib/shareHelper';
@@ -196,6 +197,10 @@ export default function ChallengePage({ params }: ChallengePageProps) {
 
     try {
       const thumbnail = await uploadDirectToCloudinary(creation.thumbnail_url);
+      const colorsData = typeof creation.grid_data.colors === 'string'
+        ? creation.grid_data.colors
+        : compressColors(creation.grid_data.colors);
+
       const res = await fetch('/api/creations', {
         method: 'POST',
         headers: {
@@ -203,8 +208,12 @@ export default function ChallengePage({ params }: ChallengePageProps) {
           'x-device-id': deviceId,
         },
         body: JSON.stringify({
-          grid_data: creation.grid_data,
-          disturbed_positions: disturbed,
+          grid_data: {
+            cols: creation.grid_data.cols,
+            rows: creation.grid_data.rows,
+            colors: colorsData,
+          },
+          disturbed_positions: compressDisturbedPositions(disturbed),
           thumbnail,
           source_mode: creation.source_mode,
           is_public: false,
@@ -236,6 +245,10 @@ export default function ChallengePage({ params }: ChallengePageProps) {
 
     try {
       const thumbnail = await uploadDirectToCloudinary(creation.thumbnail_url);
+      const colorsData = typeof creation.grid_data.colors === 'string'
+        ? creation.grid_data.colors
+        : compressColors(creation.grid_data.colors);
+
       const res = await fetch(`/api/creations/${creation.id}/remix`, {
         method: 'POST',
         headers: {
@@ -243,7 +256,11 @@ export default function ChallengePage({ params }: ChallengePageProps) {
           'x-device-id': deviceId,
         },
         body: JSON.stringify({
-          grid_data: creation.grid_data,
+          grid_data: {
+            cols: creation.grid_data.cols,
+            rows: creation.grid_data.rows,
+            colors: colorsData,
+          },
           thumbnail,
           source_mode: creation.source_mode,
           is_public: false,
@@ -363,7 +380,9 @@ export default function ChallengePage({ params }: ChallengePageProps) {
   const sampledGrid: SampledGridResult = {
     cols: creation.grid_data.cols,
     rows: creation.grid_data.rows,
-    colors: new Float32Array(creation.grid_data.colors),
+    colors: typeof creation.grid_data.colors === 'string'
+      ? decompressColors(creation.grid_data.colors)
+      : new Float32Array(creation.grid_data.colors),
   };
 
   return (
