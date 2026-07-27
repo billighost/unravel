@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { UIObstacleAABB } from '@/lib/uiObstacles';
 import { sessionPhysicsConfig } from '@/lib/sessionPhysics';
+import { selectRevertPattern, computePatternDelays } from '@/lib/revertPatterns';
 
 // Haptic vibration throttling
 let lastVibrateTime = 0;
@@ -50,15 +51,36 @@ export interface PhysicsGridData {
   totalCubes: number;
 }
 
+// Ease-out-back: slight overshoot past target then settle — gives each
+// cube a satisfying "snap" landing with a ~10% overshoot.
+function easeOutBack(t: number): number {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
 export class CubePhysicsEngine {
   public grid: PhysicsGridData;
   public isDisturbed: boolean = false;
   public isReverting: boolean = false;
   
-  private revertProgress: number = 0;
-  private revertDuration: number = 0.75; // seconds
+  private revertElapsed: number = 0;
   private revertStartPositions: Float32Array;
   private revertStartRotations: Float32Array;
+
+  // Staggered revert pattern system (V23)
+  private revertDelays: Float32Array;          // Per-cube normalised delay [0,1]
+  private revertGatherFlags: Float32Array;     // Per-cube gather-point data (3*N); [0]=flag
+  private revertHasGather: boolean = false;    // True when active pattern uses gather points
+  private revertTotalDuration: number = 2.4;   // Full reveal window (seconds)
+  private revertStaggerWindow: number = 1.85;  // Portion of window for stagger spread
+  private revertCubeTweenDuration: number = 0.55; // Each cube's individual tween length
+  private lastPatternIndex: number | null = null;
+
+  // Gather-point world coordinates for convergent-gather pattern
+  private gatherWorldX: number = 0;
+  private gatherWorldY: number = 0;
+  private gatherWorldZ: number = 0;
 
   // Active indices array for O(active_count) updates
   private activeIndices: Int32Array;
@@ -92,6 +114,8 @@ export class CubePhysicsEngine {
 
     this.revertStartPositions = new Float32Array(totalCubes * 3);
     this.revertStartRotations = new Float32Array(totalCubes * 3);
+    this.revertDelays = new Float32Array(totalCubes);
+    this.revertGatherFlags = new Float32Array(totalCubes * 3);
     this.activeIndices = new Int32Array(totalCubes);
 
     this.dummyObject = new THREE.Object3D();
@@ -206,10 +230,13 @@ export class CubePhysicsEngine {
     
     this.revertStartPositions = new Float32Array(totalCubes * 3);
     this.revertStartRotations = new Float32Array(totalCubes * 3);
+    this.revertDelays = new Float32Array(totalCubes);
+    this.revertGatherFlags = new Float32Array(totalCubes * 3);
     this.activeIndices = new Int32Array(totalCubes);
     this.activeCount = 0;
     this.isDisturbed = false;
     this.isReverting = false;
+    this.lastPatternIndex = null;
 
     const stride = cubeSize + gap;
     const offsetX = ((cols - 1) * stride) / 2;
@@ -364,14 +391,49 @@ export class CubePhysicsEngine {
 
   /**
    * Starts the Revert animation, smoothly easing cubes back to their original positions.
+   * V23: Selects a random stagger pattern and computes per-cube delays in a single pass.
    */
   public triggerRevert() {
     if (!this.isDisturbed || this.isReverting) return;
 
-    const { positions, rotations, totalCubes } = this.grid;
+    const { positions, rotations, targetPositions, totalCubes, cols, rows, cubeSize, gap } = this.grid;
     this.revertStartPositions.set(positions);
     this.revertStartRotations.set(rotations);
-    this.revertProgress = 0;
+    this.revertElapsed = 0;
+
+    // Select pattern (no immediate repeat)
+    const patternIdx = selectRevertPattern(this.lastPatternIndex);
+    this.lastPatternIndex = patternIdx;
+
+    // Compute per-cube delays
+    this.revertGatherFlags.fill(0);
+    this.revertHasGather = computePatternDelays(
+      patternIdx,
+      rows,
+      cols,
+      this.revertDelays,
+      this.revertGatherFlags,
+    );
+
+    // Set timing: simultaneous (idx 0) uses original fast duration; others use cinematic window
+    if (patternIdx === 0) {
+      this.revertStaggerWindow = 0;
+      this.revertCubeTweenDuration = 0.75;
+      this.revertTotalDuration = 0.75;
+    } else {
+      this.revertStaggerWindow = 1.85;
+      this.revertCubeTweenDuration = 0.55;
+      this.revertTotalDuration = this.revertStaggerWindow + this.revertCubeTweenDuration;
+    }
+
+    // Pre-compute gather-point world coordinates (bottom-center of grid)
+    if (this.revertHasGather) {
+      const stride = cubeSize + gap;
+      this.gatherWorldX = 0; // center X
+      this.gatherWorldY = -((rows - 1) * stride) / 2; // bottom Y
+      this.gatherWorldZ = 1.5; // slightly forward for visual drama
+    }
+
     this.isReverting = true;
   }
 
@@ -597,29 +659,88 @@ export class CubePhysicsEngine {
   }
 
   /**
-   * Handles smooth lerped Revert back to original target positions & rotations.
+   * Handles stagger-patterned Revert back to original target positions & rotations.
+   * V23: Per-cube delays drive the stagger; easeOutBack gives satisfying snap landings.
+   * Convergent-gather pattern (#20) uses a two-phase path through a gather waypoint.
    */
   private updateRevert(dt: number) {
-    this.revertProgress += dt / this.revertDuration;
-    
-    const p = Math.min(this.revertProgress, 1.0);
-    const ease = 1 - Math.pow(1 - p, 3);
+    this.revertElapsed += dt;
 
     const { positions, rotations, targetPositions, totalCubes } = this.grid;
+    const staggerWindow = this.revertStaggerWindow;
+    const cubeTween = this.revertCubeTweenDuration;
+    const hasGather = this.revertHasGather;
+    const gatherX = this.gatherWorldX;
+    const gatherY = this.gatherWorldY;
+    const gatherZ = this.gatherWorldZ;
+
+    let allDone = true;
 
     for (let i = 0; i < totalCubes; i++) {
       const i3 = i * 3;
+      const cubeDelay = this.revertDelays[i] * staggerWindow;
+      const cubeElapsed = this.revertElapsed - cubeDelay;
 
-      positions[i3] = THREE.MathUtils.lerp(this.revertStartPositions[i3], targetPositions[i3], ease);
-      positions[i3 + 1] = THREE.MathUtils.lerp(this.revertStartPositions[i3 + 1], targetPositions[i3 + 1], ease);
-      positions[i3 + 2] = THREE.MathUtils.lerp(this.revertStartPositions[i3 + 2], targetPositions[i3 + 2], ease);
+      if (cubeElapsed < 0) {
+        // Cube hasn't started yet — keep at start position
+        allDone = false;
+        continue;
+      }
 
-      rotations[i3] = THREE.MathUtils.lerp(this.revertStartRotations[i3], 0, ease);
-      rotations[i3 + 1] = THREE.MathUtils.lerp(this.revertStartRotations[i3 + 1], 0, ease);
-      rotations[i3 + 2] = THREE.MathUtils.lerp(this.revertStartRotations[i3 + 2], 0, ease);
+      const t = Math.min(cubeElapsed / cubeTween, 1.0);
+
+      if (t < 1.0) {
+        allDone = false;
+      }
+
+      const ease = easeOutBack(t);
+
+      if (hasGather && this.revertGatherFlags[i3] > 0) {
+        // Convergent-gather: two-phase path through gather waypoint
+        const phase1End = 0.45;
+        if (t < phase1End) {
+          // Phase 1: start → gather point
+          const t1 = t / phase1End;
+          const e1 = easeOutBack(t1);
+          positions[i3] = this.revertStartPositions[i3] + (gatherX - this.revertStartPositions[i3]) * e1;
+          positions[i3 + 1] = this.revertStartPositions[i3 + 1] + (gatherY - this.revertStartPositions[i3 + 1]) * e1;
+          positions[i3 + 2] = this.revertStartPositions[i3 + 2] + (gatherZ - this.revertStartPositions[i3 + 2]) * e1;
+        } else {
+          // Phase 2: gather point → target
+          const t2 = (t - phase1End) / (1 - phase1End);
+          const e2 = easeOutBack(t2);
+          positions[i3] = gatherX + (targetPositions[i3] - gatherX) * e2;
+          positions[i3 + 1] = gatherY + (targetPositions[i3 + 1] - gatherY) * e2;
+          positions[i3 + 2] = gatherZ + (targetPositions[i3 + 2] - gatherZ) * e2;
+        }
+        // Rotation: lerp toward 0 across the full t range
+        rotations[i3] = this.revertStartRotations[i3] * (1 - ease);
+        rotations[i3 + 1] = this.revertStartRotations[i3 + 1] * (1 - ease);
+        rotations[i3 + 2] = this.revertStartRotations[i3 + 2] * (1 - ease);
+      } else {
+        // Standard path: straight lerp from start to target with easeOutBack
+        positions[i3] = this.revertStartPositions[i3] + (targetPositions[i3] - this.revertStartPositions[i3]) * ease;
+        positions[i3 + 1] = this.revertStartPositions[i3 + 1] + (targetPositions[i3 + 1] - this.revertStartPositions[i3 + 1]) * ease;
+        positions[i3 + 2] = this.revertStartPositions[i3 + 2] + (targetPositions[i3 + 2] - this.revertStartPositions[i3 + 2]) * ease;
+
+        rotations[i3] = this.revertStartRotations[i3] * (1 - ease);
+        rotations[i3 + 1] = this.revertStartRotations[i3 + 1] * (1 - ease);
+        rotations[i3 + 2] = this.revertStartRotations[i3 + 2] * (1 - ease);
+      }
     }
 
-    if (p >= 1.0) {
+    if (allDone) {
+      // Snap everything to exact target (handles overshoot residue from easeOutBack)
+      for (let i = 0; i < totalCubes; i++) {
+        const i3 = i * 3;
+        positions[i3] = targetPositions[i3];
+        positions[i3 + 1] = targetPositions[i3 + 1];
+        positions[i3 + 2] = targetPositions[i3 + 2];
+        rotations[i3] = 0;
+        rotations[i3 + 1] = 0;
+        rotations[i3 + 2] = 0;
+      }
+
       this.isReverting = false;
       this.isDisturbed = false;
       this.activeCount = 0;
