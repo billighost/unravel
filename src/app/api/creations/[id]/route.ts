@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCreationById } from '@/lib/db';
+import { getCreationById, incrementViewCount } from '@/lib/db';
 import { Profiler } from '@/lib/profiler';
 import { getCache, setCache } from '@/lib/cache';
 
@@ -13,11 +13,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Missing creation ID' }, { status: 400 });
     }
 
+    // View count logic
+    const deviceId = req.headers.get('x-device-id') || 'unknown';
+    const viewCacheKey = `viewed:${deviceId}:${id}`;
+    let shouldIncrement = false;
+    if (deviceId && deviceId !== 'unknown') {
+      const alreadyViewed = await getCache(viewCacheKey);
+      if (!alreadyViewed) {
+        shouldIncrement = true;
+      }
+    }
+
+    if (shouldIncrement) {
+      await incrementViewCount(id);
+      await setCache(viewCacheKey, true, 3600); // 1 hour TTL
+    }
+
     profiler.start('cache', 'Cache Check');
-    const cachedCreation = await getCache(`cache:creation:${id}`);
+    let cachedCreation = await getCache<any>(`cache:creation:${id}`);
     profiler.stop('cache', 'Cache Check');
 
     if (cachedCreation) {
+      if (shouldIncrement) {
+        cachedCreation.view_count = (cachedCreation.view_count || 0) + 1;
+        await setCache(`cache:creation:${id}`, cachedCreation, 604800);
+      }
+
       profiler.stop('total', 'Total Request Time');
       profiler.log(`/api/creations/${id} (CACHED)`);
 

@@ -47,7 +47,8 @@ export default function RootLayout({
               const forceSW = urlParams.get('sw') === 'true';
               if ((forceSW || (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1')) && 'serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').catch(function(err) {
+                  const buildId = "${process.env.VERCEL_GIT_COMMIT_SHA || process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || 'dev-' + Date.now()}";
+                  navigator.serviceWorker.register('/sw.js?v=' + encodeURIComponent(buildId)).catch(function(err) {
                     console.log('SW registration failed: ', err);
                   });
                 });

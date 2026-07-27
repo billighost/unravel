@@ -4,7 +4,7 @@ import React, { useEffect, useState, use } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, Share2, Sparkles, AlertTriangle, Check, Flame, RefreshCw, X } from 'lucide-react';
+import { RotateCcw, Share2, Sparkles, AlertTriangle, Check, Flame, RefreshCw, X, Eye } from 'lucide-react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { Button } from '@/components/ui/Button';
@@ -86,6 +86,16 @@ export default function ChallengePage({ params }: ChallengePageProps) {
       setLoading(false);
     }
   };
+
+  // Lock body scroll for challenge canvas view
+  useEffect(() => {
+    document.documentElement.classList.add('scroll-locked');
+    document.body.classList.add('scroll-locked');
+    return () => {
+      document.documentElement.classList.remove('scroll-locked');
+      document.body.classList.remove('scroll-locked');
+    };
+  }, []);
 
   useEffect(() => {
     loadCreation();
@@ -398,6 +408,25 @@ export default function ChallengePage({ params }: ChallengePageProps) {
               >
                 <Flame size={12} fill="var(--accent)" /> {streakCount}D
               </motion.div>
+            )}
+            {creation && (
+              <div
+                aria-label={`Viewed ${creation.view_count || 0} times`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  backgroundColor: 'var(--surface)',
+                  border: '2px solid var(--ink)',
+                  padding: '0.25rem 0.5rem',
+                  boxShadow: '2px 2px 0 var(--ink)',
+                  fontFamily: 'var(--font-heading)',
+                  fontSize: '0.65rem',
+                  color: 'var(--ink)',
+                }}
+              >
+                <Eye size={12} /> {creation.view_count || 0}
+              </div>
             )}
           </div>
 

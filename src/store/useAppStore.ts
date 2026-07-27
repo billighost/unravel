@@ -8,17 +8,20 @@ interface AppState {
   mode: AppMode;
   gridData: SampledGridResult;
   isDisturbed: boolean;
+  username: string | null;
   
   setMode: (mode: AppMode) => void;
   setGridData: (gridData: SampledGridResult, sourceMode?: string) => void;
   setIsDisturbed: (isDisturbed: boolean) => void;
   resetToDemo: () => void;
+  setUsername: (username: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   mode: 'landing',
   gridData: generateDemoGrid(60, 40),
   isDisturbed: false,
+  username: null,
 
   setMode: (mode) => set({ mode }),
   
@@ -57,4 +60,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       gridData: generateDemoGrid(60, 40),
       isDisturbed: false,
     }),
+
+  setUsername: (username) => set({ username }),
 }));

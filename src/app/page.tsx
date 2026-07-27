@@ -82,6 +82,16 @@ export default function Home() {
     }
   };
 
+  // Lock body scroll for main cube canvas view
+  useEffect(() => {
+    document.documentElement.classList.add('scroll-locked');
+    document.body.classList.add('scroll-locked');
+    return () => {
+      document.documentElement.classList.remove('scroll-locked');
+      document.body.classList.remove('scroll-locked');
+    };
+  }, []);
+
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;

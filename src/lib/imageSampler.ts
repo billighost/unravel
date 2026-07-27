@@ -8,7 +8,8 @@ import { qualityTierManager } from './qualityTier';
 export function downsampleBoxFilter(
   sourceCanvas: HTMLCanvasElement,
   cols: number,
-  rows: number
+  rows: number,
+  contrastMode?: 'draw' | 'type' | 'photo'
 ): Float32Array {
   const srcW = sourceCanvas.width;
   const srcH = sourceCanvas.height;
@@ -48,15 +49,41 @@ export function downsampleBoxFilter(
         let gVal = gSum / pixelCount / 255;
         let bVal = bSum / pixelCount / 255;
 
-        // Apply subtle saturation (1.12x) and contrast (1.05x) enhancement
-        const gray = 0.299 * rVal + 0.587 * gVal + 0.114 * bVal;
-        rVal = Math.min(1, Math.max(0, gray + (rVal - gray) * 1.12));
-        gVal = Math.min(1, Math.max(0, gray + (gVal - gray) * 1.12));
-        bVal = Math.min(1, Math.max(0, gray + (bVal - gray) * 1.12));
+        if (contrastMode === 'draw') {
+          // Gamma correction to lift thin stroke details
+          rVal = Math.pow(rVal, 0.55);
+          gVal = Math.pow(gVal, 0.55);
+          bVal = Math.pow(bVal, 0.55);
 
-        rVal = Math.min(1, Math.max(0, (rVal - 0.5) * 1.05 + 0.5));
-        gVal = Math.min(1, Math.max(0, (gVal - 0.5) * 1.05 + 0.5));
-        bVal = Math.min(1, Math.max(0, (bVal - 0.5) * 1.05 + 0.5));
+          // Boost brightness of dim colored pixels to keep strokes vivid
+          const maxVal = Math.max(rVal, gVal, bVal);
+          if (maxVal > 0 && maxVal < 0.95) {
+            const boost = Math.min(1.0 / maxVal, 1.4);
+            rVal = Math.min(1, rVal * boost);
+            gVal = Math.min(1, gVal * boost);
+            bVal = Math.min(1, bVal * boost);
+          }
+        } else if (contrastMode === 'type') {
+          // Sigmoid thresholding to keep text edges crisp
+          const gray = 0.299 * rVal + 0.587 * gVal + 0.114 * bVal;
+          const k = 14; // Steepness parameter
+          const sigmoid = 1 / (1 + Math.exp(-k * (gray - 0.65)));
+
+          // Interpolate between text ink #1A1A1A and page background #F7F6F2
+          rVal = 0.10 + (0.97 - 0.10) * sigmoid;
+          gVal = 0.10 + (0.96 - 0.10) * sigmoid;
+          bVal = 0.10 + (0.95 - 0.10) * sigmoid;
+        } else {
+          // Apply subtle saturation (1.12x) and contrast (1.05x) enhancement for photos
+          const gray = 0.299 * rVal + 0.587 * gVal + 0.114 * bVal;
+          rVal = Math.min(1, Math.max(0, gray + (rVal - gray) * 1.12));
+          gVal = Math.min(1, Math.max(0, gray + (gVal - gray) * 1.12));
+          bVal = Math.min(1, Math.max(0, gray + (bVal - gray) * 1.12));
+
+          rVal = Math.min(1, Math.max(0, (rVal - 0.5) * 1.05 + 0.5));
+          gVal = Math.min(1, Math.max(0, (gVal - 0.5) * 1.05 + 0.5));
+          bVal = Math.min(1, Math.max(0, (gVal - 0.5) * 1.05 + 0.5));
+        }
 
         colors[gridIdx] = rVal;
         colors[gridIdx + 1] = gVal;
@@ -160,7 +187,7 @@ export function sampleCanvasToGrid(
     cols = Math.max(Math.round(maxDimension * aspect), 10);
   }
 
-  const colors = downsampleBoxFilter(sourceCanvas, cols, rows);
+  const colors = downsampleBoxFilter(sourceCanvas, cols, rows, 'draw');
 
   return { cols, rows, colors };
 }

@@ -1,4 +1,6 @@
-const CACHE_NAME = 'unravel-pwa-v11-v1';
+const urlParams = new URL(self.location.href).searchParams;
+const VERSION = urlParams.get('v') || 'v11-v1';
+const CACHE_NAME = `unravel-pwa-${VERSION}`;
 const MEDIA_CACHE_NAME = 'unravel-media-cache';
 const API_CACHE_NAME = 'unravel-api-cache';
 const ALLOWED_CACHES = [CACHE_NAME, MEDIA_CACHE_NAME, API_CACHE_NAME];
@@ -339,7 +341,8 @@ self.addEventListener('fetch', (event) => {
       if (cachedResponse) return cachedResponse;
       return fetch(request)
         .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const isGoogleFont = url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com');
+          if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || isGoogleFont)) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
           }

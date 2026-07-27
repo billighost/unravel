@@ -17,10 +17,9 @@ export function renderTextToGrid(
   const targetCols = targetColsOverride || Math.round(tierMax * 0.88); // e.g. 70 for high, 52 for med, 35 for low
   const targetRows = targetRowsOverride || Math.round(targetCols * 0.5); // e.g. 35 for high, 26 for med, 17 for low
 
-  // High-res scratch canvas (4x supersampled resolution relative to grid)
-  const scale = 4;
-  const scratchW = targetCols * 16 * scale;
-  const scratchH = targetRows * 16 * scale;
+  // High-res scratch canvas (fixed max width to prevent iOS Safari canvas allocation memory limits)
+  const scratchW = 2048;
+  const scratchH = Math.round(2048 * (targetRows / targetCols));
 
   const canvas = document.createElement('canvas');
   canvas.width = scratchW;
@@ -66,8 +65,8 @@ export function renderTextToGrid(
   // Draw centered text with anti-aliasing
   ctx.fillText(cleanText, scratchW / 2, scratchH / 2);
 
-  // Box-filter downsample to target grid dimensions
-  const colors = downsampleBoxFilter(canvas, targetCols, targetRows);
+  // Box-filter downsample to target grid dimensions with type high-contrast option
+  const colors = downsampleBoxFilter(canvas, targetCols, targetRows, 'type');
 
   return {
     cols: targetCols,

@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Volume2, VolumeX, Gauge, Flame, Sparkles, Images, Plus, Check } from 'lucide-react';
+import { Menu, X, Volume2, VolumeX, Gauge, Flame, Sparkles, Images, Plus, Check, User } from 'lucide-react';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { qualityTierManager, QualityTier } from '@/lib/qualityTier';
 import { getDeviceId } from '@/lib/deviceId';
 import { showToast } from '@/components/ui/Toast';
 import { Button } from './Button';
+import { AccountModal } from './AccountModal';
+import { useAppStore } from '@/store/useAppStore';
 
 interface AppMenuProps {
   onOpenGallery?: () => void;
@@ -34,6 +36,11 @@ export const AppMenu: React.FC<AppMenuProps> = ({
   const [streakCount, setStreakCount] = useState<number | null>(null);
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [loadingChallenge, setLoadingChallenge] = useState(false);
+
+  // Account modal states
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const username = useAppStore((state) => state.username);
+  const setStoreUsername = useAppStore((state) => state.setUsername);
 
   // Check mobile width & sync mute/performance
   useEffect(() => {
@@ -69,6 +76,22 @@ export const AppMenu: React.FC<AppMenuProps> = ({
       }
     };
     loadStreakAndChallenge();
+
+    const checkSession = async () => {
+      try {
+        const deviceId = getDeviceId();
+        const res = await fetch('/api/accounts/me', {
+          headers: { 'x-device-id': deviceId },
+        });
+        const data = await res.json();
+        if (data.loggedIn) {
+          setStoreUsername(data.username);
+        }
+      } catch (err) {
+        console.error('Failed to restore account session in menu:', err);
+      }
+    };
+    checkSession();
 
     return () => {
       window.removeEventListener('resize', checkWidth);
@@ -198,6 +221,31 @@ export const AppMenu: React.FC<AppMenuProps> = ({
 
       {/* Main Options List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {/* Account / Save Progress */}
+        <button
+          onClick={() => {
+            soundEngine.playUIClick();
+            setIsOpen(false);
+            setIsAccountOpen(true);
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            width: '100%',
+            padding: '0.65rem 0.85rem',
+            backgroundColor: 'var(--surface)',
+            border: '2px solid var(--ink)',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <User size={18} color="var(--ink)" />
+          <span className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
+            {username ? `ACCOUNT: ${username.toUpperCase()}` : 'SAVE YOUR PROGRESS'}
+          </span>
+        </button>
+
         {/* Today's Challenge */}
         <button
           onClick={handleDailyChallengeClick}
@@ -365,6 +413,15 @@ export const AppMenu: React.FC<AppMenuProps> = ({
           })}
         </div>
       </div>
+
+      {/* Footer Legal Links */}
+      <div style={{ borderTop: '2px solid var(--border)', paddingTop: '0.75rem', marginTop: '0.75rem', display: 'flex', justifyContent: 'center', gap: '0.75rem' }}>
+        <a href="/about" onClick={() => setIsOpen(false)} style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)', textDecoration: 'none' }}>ABOUT</a>
+        <span style={{ fontSize: '0.65rem', color: 'var(--border)' }}>|</span>
+        <a href="/terms" onClick={() => setIsOpen(false)} style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)', textDecoration: 'none' }}>TERMS</a>
+        <span style={{ fontSize: '0.65rem', color: 'var(--border)' }}>|</span>
+        <a href="/privacy" onClick={() => setIsOpen(false)} style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)', textDecoration: 'none' }}>PRIVACY</a>
+      </div>
     </div>
   );
 
@@ -460,6 +517,11 @@ export const AppMenu: React.FC<AppMenuProps> = ({
           </>
         )}
       </AnimatePresence>
+
+      <AccountModal
+        isOpen={isAccountOpen}
+        onClose={() => setIsAccountOpen(false)}
+      />
     </div>
   );
 };

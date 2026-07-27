@@ -71,7 +71,7 @@ export async function transcodeWebMToMP4(
     if (secureUrl.includes('/video/upload/')) {
       const parts = secureUrl.split('/video/upload/');
       const pathWithoutExt = parts[1].replace(/\.[^/.]+$/, '');
-      mp4Url = `${parts[0]}/video/upload/f_mp4,q_auto/${pathWithoutExt}.mp4`;
+      mp4Url = `${parts[0]}/video/upload/f_mp4,q_auto,vc_h264:main,ac_aac,fl_faststart/${pathWithoutExt}.mp4`;
     } else {
       mp4Url = secureUrl.replace(/\.[^/.]+$/, '.mp4');
     }

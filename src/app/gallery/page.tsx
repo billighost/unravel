@@ -21,6 +21,7 @@ interface CreationItem {
   source_mode: string;
   created_at: string;
   report_count: number;
+  view_count?: number;
 }
 
 export default function GalleryPage() {
@@ -246,6 +247,10 @@ export default function GalleryPage() {
 
                     <div style={{ position: 'absolute', bottom: '0.5rem', left: '0.5rem', backgroundColor: 'var(--ink)', color: '#FFF', padding: '0.15rem 0.5rem', fontSize: '0.6rem', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>
                       {item.source_mode}
+                    </div>
+
+                    <div style={{ position: 'absolute', bottom: '0.5rem', right: '0.5rem', backgroundColor: 'var(--ink)', color: '#FFF', padding: '0.15rem 0.5rem', fontSize: '0.6rem', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Eye size={10} /> {item.view_count || 0}
                     </div>
                   </div>
                 </Link>
