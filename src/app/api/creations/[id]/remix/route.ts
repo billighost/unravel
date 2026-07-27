@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createCreation, getCreationById } from '@/lib/db';
-import { uploadThumbnailToCloudinary } from '@/lib/cloudinary';
 import { rateLimit } from '@/lib/ratelimit';
 import { Profiler } from '@/lib/profiler';
-import { incrementGalleryVersion } from '@/lib/cache';
+import { enqueueBackgroundJob } from '@/lib/qstash';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const profiler = new Profiler();
@@ -36,9 +35,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const remixId = `rmx_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
 
-    profiler.start('cloudinary', 'Cloudinary Upload');
-    const thumbnailUrl = await uploadThumbnailToCloudinary(thumbnail || '');
-    profiler.stop('cloudinary', 'Cloudinary Upload');
+    // Use thumbnail directly — client has already uploaded to Cloudinary.
+    // If it's still base64, save it and enqueue a background upload.
+    const isBase64 = thumbnail && thumbnail.startsWith('data:image');
+    const thumbnailUrl = thumbnail || '';
 
     profiler.start('db_write', 'Database Write');
     const record = await createCreation({
@@ -54,12 +54,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     profiler.stop('db_write', 'Database Write');
 
-    if (!!is_public) {
-      profiler.start('cache_invalidate', 'Cache Invalidation');
-      await incrementGalleryVersion();
-      profiler.stop('cache_invalidate', 'Cache Invalidation');
-    }
-
     profiler.stop('total', 'Total Request Time');
     profiler.log(`/api/creations/${parentId}/remix`);
 
@@ -73,6 +67,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     Object.entries(profiler.getHeaders()).forEach(([k, v]) => {
       response.headers.set(k, v);
     });
+
+    // Fire-and-forget background jobs
+    if (!!is_public) {
+      enqueueBackgroundJob({ type: 'cache-invalidate', payload: {} });
+      enqueueBackgroundJob({ type: 'write-through', payload: {} });
+    }
+
+    if (isBase64) {
+      enqueueBackgroundJob({
+        type: 'upload-thumbnail',
+        payload: { creationId: remixId, base64Thumbnail: thumbnail },
+      });
+    }
 
     return response;
   } catch (err: any) {

@@ -119,6 +119,8 @@ function getSql(): NeonQueryFunction<false, false> | null {
 // Creation Operations
 export async function createCreation(record: Omit<CreationRecord, 'created_at' | 'report_count' | 'is_hidden' | 'view_count'>): Promise<CreationRecord> {
   const sql = getSql();
+
+  // For in-memory store, keep the separate lookup
   const username = record.username || await getAssociatedUsername(record.device_id);
 
   const fullRecord: CreationRecord = {
@@ -139,11 +141,31 @@ export async function createCreation(record: Omit<CreationRecord, 'created_at' |
   const disturbedJson = fullRecord.disturbed_positions ? JSON.stringify(fullRecord.disturbed_positions) : null;
   const parentId = fullRecord.parent_creation_id || null;
 
-  await sql`
+  // Combined INSERT with username subquery + RETURNING to avoid separate queries
+  const rows = await sql`
     INSERT INTO creations 
     (id, device_id, grid_data, disturbed_positions, thumbnail_url, source_mode, parent_creation_id, is_daily_challenge, is_public, username, view_count) 
-    VALUES (${fullRecord.id}, ${fullRecord.device_id}, ${gridDataJson}::jsonb, ${disturbedJson}::jsonb, ${fullRecord.thumbnail_url}, ${fullRecord.source_mode}, ${parentId}, ${fullRecord.is_daily_challenge}, ${fullRecord.is_public}, ${username}, 0)
+    VALUES (
+      ${fullRecord.id}, 
+      ${fullRecord.device_id}, 
+      ${gridDataJson}::jsonb, 
+      ${disturbedJson}::jsonb, 
+      ${fullRecord.thumbnail_url}, 
+      ${fullRecord.source_mode}, 
+      ${parentId}, 
+      ${fullRecord.is_daily_challenge}, 
+      ${fullRecord.is_public}, 
+      COALESCE(${username}, (SELECT username FROM device_sessions WHERE device_id = ${fullRecord.device_id} LIMIT 1)),
+      0
+    )
+    RETURNING username
   `;
+  
+  // Use the DB-resolved username if available
+  if (rows.length > 0 && rows[0].username) {
+    fullRecord.username = rows[0].username;
+  }
+  
   return fullRecord;
 }
 

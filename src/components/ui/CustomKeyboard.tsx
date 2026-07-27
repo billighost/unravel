@@ -8,33 +8,52 @@ interface CustomKeyboardProps {
   value: string;
   onChange: (value: string) => void;
   onDone?: () => void;
+  /** Maximum character count. Defaults to 35. */
+  maxLength?: number;
+  /** Maximum line count for multi-line support. If > 1, shows a RETURN key. Defaults to 1. */
+  maxLines?: number;
 }
 
 export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
   value,
   onChange,
   onDone,
+  maxLength = 35,
+  maxLines = 1,
 }) => {
   const [isShift, setIsShift] = useState(true); // default capital since pixel font looks great in caps
+
+  const supportsMultiLine = maxLines > 1;
 
   const rows = [
     ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
     ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
     ['SHIFT', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'BACKSPACE'],
-    ['.', ',', '!', '?', '-', "'", 'SPACE', 'DONE'],
+    // Replace '-' with 'RETURN' when multi-line is enabled
+    supportsMultiLine
+      ? ['.', ',', '!', '?', 'RETURN', "'", 'SPACE', 'DONE']
+      : ['.', ',', '!', '?', '-', "'", 'SPACE', 'DONE'],
   ];
 
   const handleKeyPress = (key: string) => {
     if (key === 'BACKSPACE') {
       onChange(value.slice(0, -1));
     } else if (key === 'SPACE') {
-      onChange(value + ' ');
+      if (value.length < maxLength) {
+        onChange(value + ' ');
+      }
     } else if (key === 'SHIFT') {
       setIsShift(!isShift);
     } else if (key === 'DONE') {
       if (onDone) onDone();
+    } else if (key === 'RETURN') {
+      // Only allow if we haven't exceeded max lines
+      const currentLineCount = (value.match(/\n/g) || []).length + 1;
+      if (currentLineCount < maxLines) {
+        onChange(value + '\n');
+      }
     } else {
-      if (value.length < 35) {
+      if (value.length < maxLength) {
         onChange(value + (isShift ? key.toUpperCase() : key.toLowerCase()));
       }
     }
@@ -74,7 +93,7 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
           }}
         >
           {row.map((key) => {
-            const isSpecial = ['SHIFT', 'BACKSPACE', 'SPACE', 'DONE'].includes(key);
+            const isSpecial = ['SHIFT', 'BACKSPACE', 'SPACE', 'DONE', 'RETURN'].includes(key);
             let displayKey = key;
             let icon = null;
 
@@ -87,6 +106,9 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
             } else if (key === 'DONE') {
               displayKey = 'DONE';
               icon = <CornerDownLeft size={14} style={{ marginLeft: '2px' }} />;
+            } else if (key === 'RETURN') {
+              displayKey = '⏎';
+              icon = null;
             } else if (key === 'SPACE') {
               displayKey = 'SPACE';
             } else {
@@ -111,6 +133,11 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
             } else if (key === 'SHIFT' || key === 'BACKSPACE') {
               flex = '1.5';
               maxWidth = '70px';
+            } else if (key === 'RETURN') {
+              flex = '1';
+              maxWidth = '40px';
+              bg = 'var(--ink)';
+              color = '#FFFFFF';
             }
 
             return (

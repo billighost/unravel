@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { soundEngine } from '@/lib/audio/soundEngine';
 
@@ -24,6 +24,33 @@ export function hsvToHex(h: number, s: number, v: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
 }
 
+export function hexToHsv(hex: string): { h: number; s: number; v: number } {
+  let r = 0, g = 0, b = 0;
+  const clean = hex.replace('#', '');
+  if (clean.length === 6) {
+    r = parseInt(clean.substring(0, 2), 16) / 255;
+    g = parseInt(clean.substring(2, 4), 16) / 255;
+    b = parseInt(clean.substring(4, 6), 16) / 255;
+  }
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d + 6) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+
+  return { h, s, v };
+}
+
 interface ColorPickerProps {
   currentColor: string;
   onChange: (color: string) => void;
@@ -44,21 +71,26 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
   const isDraggingSatVal = useRef(false);
   const isDraggingHue = useRef(false);
 
-  // Initialize H, S, V from currentColor when panel opens
+  // Sync H, S, V from currentColor when the panel opens
   useEffect(() => {
-    // Default starting color if needed
-  }, [currentColor]);
+    if (isOpen && currentColor) {
+      const hsv = hexToHsv(currentColor);
+      setHue(hsv.h);
+      setSat(hsv.s);
+      setVal(hsv.v);
+    }
+  }, [isOpen, currentColor]);
 
-  const updateColor = (h: number, s: number, v: number) => {
+  const updateColor = useCallback((h: number, s: number, v: number) => {
     setHue(h);
     setSat(s);
     setVal(v);
     const hex = hsvToHex(h, s, v);
     onChange(hex);
-  };
+  }, [onChange]);
 
   // Saturation / Value Drag Handler
-  const handleSatValPointer = (e: React.PointerEvent<HTMLDivElement> | PointerEvent) => {
+  const handleSatValPointer = useCallback((e: PointerEvent | React.PointerEvent<HTMLDivElement>) => {
     if (!satValRef.current) return;
     const rect = satValRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
@@ -67,56 +99,55 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
     const s = x / rect.width;
     const v = 1 - y / rect.height;
     updateColor(hue, s, v);
-  };
+  }, [hue, updateColor]);
 
-  const handleSatValDown = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleSatValDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     isDraggingSatVal.current = true;
     soundEngine.playUIClickQuiet();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
     handleSatValPointer(e);
-  };
-
-  const handleSatValMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isDraggingSatVal.current) {
-      handleSatValPointer(e);
-    }
-  };
-
-  const handleSatValUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isDraggingSatVal.current) {
-      isDraggingSatVal.current = false;
-      try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch (_) {}
-    }
-  };
+  }, [handleSatValPointer]);
 
   // Hue Drag Handler
-  const handleHuePointer = (e: React.PointerEvent<HTMLDivElement> | PointerEvent) => {
+  const handleHuePointer = useCallback((e: PointerEvent | React.PointerEvent<HTMLDivElement>) => {
     if (!hueRef.current) return;
     const rect = hueRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const h = (x / rect.width) * 360;
     updateColor(Math.min(359.9, h), sat, val);
-  };
+  }, [sat, val, updateColor]);
 
-  const handleHueDown = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleHueDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     isDraggingHue.current = true;
     soundEngine.playUIClickQuiet();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
     handleHuePointer(e);
-  };
+  }, [handleHuePointer]);
 
-  const handleHueMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isDraggingHue.current) {
-      handleHuePointer(e);
-    }
-  };
+  // Window-level move and up handlers for reliable drag tracking
+  useEffect(() => {
+    const handleWindowMove = (e: PointerEvent) => {
+      if (isDraggingSatVal.current) {
+        handleSatValPointer(e);
+      }
+      if (isDraggingHue.current) {
+        handleHuePointer(e);
+      }
+    };
 
-  const handleHueUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isDraggingHue.current) {
+    const handleWindowUp = () => {
+      isDraggingSatVal.current = false;
       isDraggingHue.current = false;
-      try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch (_) {}
+    };
+
+    if (isOpen) {
+      window.addEventListener('pointermove', handleWindowMove);
+      window.addEventListener('pointerup', handleWindowUp);
     }
-  };
+
+    return () => {
+      window.removeEventListener('pointermove', handleWindowMove);
+      window.removeEventListener('pointerup', handleWindowUp);
+    };
+  }, [isOpen, handleSatValPointer, handleHuePointer]);
 
   const toggleOpen = () => {
     soundEngine.playUIClick();
@@ -196,8 +227,6 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
               <div
                 ref={satValRef}
                 onPointerDown={handleSatValDown}
-                onPointerMove={handleSatValMove}
-                onPointerUp={handleSatValUp}
                 style={{
                   width: '100%',
                   height: '150px',
@@ -234,8 +263,6 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
               <div
                 ref={hueRef}
                 onPointerDown={handleHueDown}
-                onPointerMove={handleHueMove}
-                onPointerUp={handleHueUp}
                 style={{
                   width: '100%',
                   height: '28px',
@@ -270,6 +297,10 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
                     key={swatch}
                     onClick={() => {
                       soundEngine.playUIClick();
+                      const hsv = hexToHsv(swatch);
+                      setHue(hsv.h);
+                      setSat(hsv.s);
+                      setVal(hsv.v);
                       onChange(swatch);
                     }}
                     style={{

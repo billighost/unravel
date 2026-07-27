@@ -17,6 +17,43 @@ import { uploadDirectToCloudinary } from '@/lib/cloudinaryClient';
 
 import { Button } from '@/components/ui/Button';
 
+/**
+ * Parse the Server-Timing header and log a detailed performance report
+ * combining client-side and server-side measurements.
+ */
+function logPerformanceDiagnostics(label: string, clientCloudinaryMs: number, clientApiRoundtripMs: number, res: Response): void {
+  const serverTiming = res.headers.get('Server-Timing');
+  const serverMetrics: { name: string; desc: string; dur: number }[] = [];
+
+  if (serverTiming) {
+    const entries = serverTiming.split(',').map(e => e.trim());
+    for (const entry of entries) {
+      const parts = entry.split(';').map(p => p.trim());
+      const name = parts[0];
+      let desc = name;
+      let dur = 0;
+      for (const part of parts.slice(1)) {
+        if (part.startsWith('desc=')) desc = part.replace('desc=', '').replace(/"/g, '');
+        if (part.startsWith('dur=')) dur = parseFloat(part.replace('dur=', ''));
+      }
+      serverMetrics.push({ name, desc, dur });
+    }
+  }
+
+  console.group(`⏱️ [PERF] ${label} — Full Breakdown`);
+  console.log(`  📤 Client Cloudinary Upload:  ${clientCloudinaryMs.toFixed(1)}ms`);
+  console.log(`  🌐 Client API Round-trip:     ${clientApiRoundtripMs.toFixed(1)}ms`);
+  if (serverMetrics.length > 0) {
+    console.log('  --- Server-Timing ---');
+    for (const m of serverMetrics) {
+      console.log(`  ⚙️  ${m.desc}: ${m.dur.toFixed(1)}ms`);
+    }
+  }
+  console.log(`  📊 Total Client Time:         ${(clientCloudinaryMs + clientApiRoundtripMs).toFixed(1)}ms`);
+  console.groupEnd();
+}
+
+
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -123,9 +160,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       const physics = (window as any).__unravelPhysics;
       const disturbed = physics ? physics.getDisturbedPositions() : [];
       const rawThumbnail = generateThumbnailDataUrl(gridData);
+
+      const t0 = performance.now();
       const thumbnail = await uploadDirectToCloudinary(rawThumbnail);
+      const tCloudinary = performance.now() - t0;
+
       const deviceId = getDeviceId();
 
+      const tApiStart = performance.now();
       const res = await fetch('/api/creations', {
         method: 'POST',
         headers: {
@@ -144,6 +186,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           is_public: false,
         }),
       });
+      const tApiEnd = performance.now() - tApiStart;
+
+      // Log performance diagnostics
+      logPerformanceDiagnostics('Challenge', tCloudinary, tApiEnd, res);
 
       const data = await res.json();
       if (data.shareUrl) {
@@ -186,9 +232,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       const physics = (window as any).__unravelPhysics;
       const disturbed = physics ? physics.getDisturbedPositions() : [];
       const rawThumbnail = generateThumbnailDataUrl(gridData);
+
+      const t0 = performance.now();
       const thumbnail = await uploadDirectToCloudinary(rawThumbnail);
+      const tCloudinary = performance.now() - t0;
+
       const deviceId = getDeviceId();
 
+      const tApiStart = performance.now();
       const res = await fetch('/api/creations', {
         method: 'POST',
         headers: {
@@ -207,6 +258,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           is_public: true,
         }),
       });
+      const tApiEnd = performance.now() - tApiStart;
+
+      // Log performance diagnostics
+      logPerformanceDiagnostics('Gallery Publish', tCloudinary, tApiEnd, res);
 
       if (res.ok) {
         // Invalidate cached gallery requests so the newly published creation appears

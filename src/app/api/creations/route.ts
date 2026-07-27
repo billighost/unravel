@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createCreation } from '@/lib/db';
-import { uploadThumbnailToCloudinary } from '@/lib/cloudinary';
 import { rateLimit } from '@/lib/ratelimit';
 import { Profiler } from '@/lib/profiler';
-import { incrementGalleryVersion } from '@/lib/cache';
+import { enqueueBackgroundJob } from '@/lib/qstash';
 
 export async function POST(req: NextRequest) {
   const profiler = new Profiler();
@@ -27,9 +26,10 @@ export async function POST(req: NextRequest) {
 
     const id = `c_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
 
-    profiler.start('cloudinary', 'Cloudinary Upload');
-    const thumbnailUrl = await uploadThumbnailToCloudinary(thumbnail || '');
-    profiler.stop('cloudinary', 'Cloudinary Upload');
+    // Use the thumbnail directly (client already uploaded to Cloudinary via direct upload).
+    // If it's still base64, save it now and enqueue a background upload job.
+    const isBase64 = thumbnail && thumbnail.startsWith('data:image');
+    const thumbnailUrl = thumbnail || '';
 
     profiler.start('db_write', 'Database Write');
     const record = await createCreation({
@@ -45,12 +45,7 @@ export async function POST(req: NextRequest) {
     });
     profiler.stop('db_write', 'Database Write');
 
-    if (!!is_public) {
-      profiler.start('cache_invalidate', 'Cache Invalidation');
-      await incrementGalleryVersion();
-      profiler.stop('cache_invalidate', 'Cache Invalidation');
-    }
-
+    // Return success immediately — offload non-critical work to background
     profiler.stop('total', 'Total Request Time');
     profiler.log('/api/creations');
 
@@ -63,6 +58,19 @@ export async function POST(req: NextRequest) {
     Object.entries(profiler.getHeaders()).forEach(([k, v]) => {
       response.headers.set(k, v);
     });
+
+    // Fire-and-forget background jobs (don't await)
+    if (!!is_public) {
+      enqueueBackgroundJob({ type: 'cache-invalidate', payload: {} });
+      enqueueBackgroundJob({ type: 'write-through', payload: {} });
+    }
+
+    if (isBase64) {
+      enqueueBackgroundJob({
+        type: 'upload-thumbnail',
+        payload: { creationId: id, base64Thumbnail: thumbnail },
+      });
+    }
 
     return response;
   } catch (err: any) {
