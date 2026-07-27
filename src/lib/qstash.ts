@@ -27,6 +27,13 @@ export async function enqueueBackgroundJob(job: BackgroundJob): Promise<void> {
         ? `https://${process.env.VERCEL_URL}`
         : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
+    const isLocal = appUrl.includes('localhost') || appUrl.includes('127.0.0.1');
+
+    if (isLocal) {
+      fireLocalAsync(body);
+      return;
+    }
+
     try {
       const res = await fetch(`${QSTASH_URL}${appUrl}/api/bg-jobs`, {
         method: 'POST',
