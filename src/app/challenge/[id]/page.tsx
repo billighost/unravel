@@ -14,7 +14,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { getDeviceId } from '@/lib/deviceId';
 import { SampledGridResult } from '@/lib/demoGenerator';
 import { showToast } from '@/components/ui/Toast';
-import { compressDisturbedPositions, decompressColors } from '@/lib/storage';
+import { compressDisturbedPositions, compressColors, decompressColors } from '@/lib/storage';
 import { announceToScreenReader } from '@/components/ui/AccessibilityAnnouncer';
 import { uploadDirectToCloudinary } from '@/lib/cloudinaryClient';
 import { shareOrCopyLink } from '@/lib/shareHelper';
@@ -239,7 +239,8 @@ export default function ChallengePage({ params }: ChallengePageProps) {
 
   const handleRemix = async () => {
     soundEngine.playUIClick();
-    if (!creation || isRemixing) return;
+    const physics = (window as any).__unravelPhysics;
+    if (!physics || !creation || isRemixing) return;
     setIsRemixing(true);
     const deviceId = getDeviceId();
 
@@ -261,6 +262,7 @@ export default function ChallengePage({ params }: ChallengePageProps) {
             rows: creation.grid_data.rows,
             colors: colorsData,
           },
+          disturbed_positions: compressDisturbedPositions(physics.getDisturbedPositions()),
           thumbnail,
           source_mode: creation.source_mode,
           is_public: false,

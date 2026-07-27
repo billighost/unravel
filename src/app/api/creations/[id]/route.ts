@@ -13,30 +13,33 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Missing creation ID' }, { status: 400 });
     }
 
-    // View count logic
     const deviceId = req.headers.get('x-device-id') || 'unknown';
     const viewCacheKey = `viewed:${deviceId}:${id}`;
-    let shouldIncrement = false;
-    if (deviceId && deviceId !== 'unknown') {
-      const alreadyViewed = await getCache(viewCacheKey);
-      if (!alreadyViewed) {
-        shouldIncrement = true;
-      }
-    }
-
-    if (shouldIncrement) {
-      await incrementViewCount(id);
-      await setCache(viewCacheKey, true, 3600); // 1 hour TTL
-    }
 
     profiler.start('cache', 'Cache Check');
-    let cachedCreation = await getCache<any>(`cache:creation:${id}`);
+
+    // Parallelize view-count dedup check AND creation cache lookup in a single round-trip
+    const [alreadyViewed, cachedCreation] = await Promise.all([
+      (deviceId && deviceId !== 'unknown') ? getCache(viewCacheKey) : Promise.resolve(true),
+      getCache<any>(`cache:creation:${id}`),
+    ]);
+
     profiler.stop('cache', 'Cache Check');
+
+    const shouldIncrement = !alreadyViewed && !!deviceId && deviceId !== 'unknown';
+
+    // Fire view-count increment and dedup-key write in parallel (no await — fire-and-forget)
+    if (shouldIncrement) {
+      Promise.all([
+        incrementViewCount(id),
+        setCache(viewCacheKey, true, 3600), // 1 hour dedup TTL
+      ]).catch(() => {});
+    }
 
     if (cachedCreation) {
       if (shouldIncrement) {
         cachedCreation.view_count = (cachedCreation.view_count || 0) + 1;
-        await setCache(`cache:creation:${id}`, cachedCreation, 604800);
+        setCache(`cache:creation:${id}`, cachedCreation, 604800).catch(() => {});
       }
 
       profiler.stop('total', 'Total Request Time');
@@ -61,9 +64,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       );
     }
 
-    profiler.start('cache_write', 'Cache Write');
-    await setCache(`cache:creation:${id}`, creation, 604800); // 7 days TTL
-    profiler.stop('cache_write', 'Cache Write');
+    // Write through to cache (non-blocking)
+    setCache(`cache:creation:${id}`, creation, 604800).catch(() => {}); // 7 days TTL
 
     profiler.stop('total', 'Total Request Time');
     profiler.log(`/api/creations/${id} (MISS)`);

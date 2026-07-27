@@ -4,6 +4,8 @@ import { getAccountByUsername, associateDeviceWithAccount } from '@/lib/db';
 import { getCache, setCache, invalidateCache } from '@/lib/cache';
 import { rateLimit } from '@/lib/ratelimit';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -55,12 +57,15 @@ export async function POST(req: NextRequest) {
       return handleFailedLogin(cleanUsername, failedAttempts, failedKey, lockoutKey);
     }
 
-    // Success! Clear limits
-    await invalidateCache(failedKey);
-    await invalidateCache(lockoutKey);
+    // Success! Clear limits and invalidate session cache
+    await Promise.all([
+      invalidateCache(failedKey),
+      invalidateCache(lockoutKey),
+    ]);
 
-    // Login (associate device session)
+    // Login (associate device session) and update session cache
     await associateDeviceWithAccount(deviceId, cleanUsername);
+    setCache(`session:${deviceId}`, cleanUsername, 300).catch(() => {}); // Warm session cache
 
     return NextResponse.json({ success: true, username: cleanUsername });
   } catch (err: any) {

@@ -10,10 +10,15 @@ export async function GET(req: NextRequest) {
   try {
     const deviceId = req.headers.get('x-device-id') || 'anonymous_device';
 
-    // 1. Get daily challenge (from cache or DB)
-    profiler.start('challenge_cache', 'Daily Challenge Cache Check');
-    let challenge = await getCache('cache:daily-challenge:creation');
-    profiler.stop('challenge_cache', 'Daily Challenge Cache Check');
+    profiler.start('parallel_fetch', 'Parallel DB & Cache Fetch');
+    // Fetch both the cached challenge and the user's specific streak simultaneously
+    const [cachedChallenge, streakInfo] = await Promise.all([
+      getCache('cache:daily-challenge:creation'),
+      deviceId !== 'anonymous_device' ? getDeviceStreak(deviceId) : Promise.resolve({ current_streak: 0, longest_streak: 0, completed_today: false }),
+    ]);
+    profiler.stop('parallel_fetch', 'Parallel DB & Cache Fetch');
+
+    let challenge = cachedChallenge;
 
     if (!challenge) {
       profiler.start('db_challenge', 'Daily Challenge DB Query');
@@ -21,20 +26,14 @@ export async function GET(req: NextRequest) {
       profiler.stop('db_challenge', 'Daily Challenge DB Query');
 
       if (challenge) {
-        profiler.start('challenge_cache_write', 'Daily Challenge Cache Write');
-        await setCache('cache:daily-challenge:creation', challenge, 3600); // 1 hour TTL
-        profiler.stop('challenge_cache_write', 'Daily Challenge Cache Write');
+        // Fire and forget cache write
+        setCache('cache:daily-challenge:creation', challenge, 3600).catch(() => {}); // 1 hour TTL
       }
     }
 
     if (!challenge) {
       return NextResponse.json({ error: 'No active daily challenge available' }, { status: 404 });
     }
-
-    // 2. Get device streak (always live DB query, indexed by device_id)
-    profiler.start('db_streak', 'Streak DB Query');
-    const streakInfo = await getDeviceStreak(deviceId);
-    profiler.stop('db_streak', 'Streak DB Query');
 
     profiler.stop('total', 'Total Request Time');
     profiler.log('/api/daily-challenge');

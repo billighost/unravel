@@ -10,8 +10,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id: parentId } = await params;
     const deviceId = req.headers.get('x-device-id') || 'anonymous_device';
 
+    // Parallelize rate-limit check and body parsing simultaneously
     profiler.start('rate_limit', 'Rate Limit Check');
-    const rateCheck = await rateLimit(deviceId);
+    const [rateCheck, body] = await Promise.all([
+      rateLimit(deviceId),
+      req.json(),
+    ]);
     profiler.stop('rate_limit', 'Rate Limit Check');
 
     if (!rateCheck.success) {
@@ -26,7 +30,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Parent creation not found or unavailable' }, { status: 404 });
     }
 
-    const body = await req.json();
     const { grid_data, disturbed_positions, thumbnail, source_mode, is_public } = body;
 
     if (!grid_data || !grid_data.cols || !grid_data.rows || !grid_data.colors) {

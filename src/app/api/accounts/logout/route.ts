@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { removeDeviceAssociation } from '@/lib/db';
+import { invalidateCache } from '@/lib/cache';
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,6 +11,7 @@ export async function POST(req: NextRequest) {
     }
 
     await removeDeviceAssociation(deviceId);
+    invalidateCache(`session:${deviceId}`).catch(() => {});
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

@@ -9,15 +9,18 @@ export async function POST(req: NextRequest) {
   try {
     const deviceId = req.headers.get('x-device-id') || 'anonymous_device';
 
+    // Parallelize rate-limit check and body parsing simultaneously
     profiler.start('rate_limit', 'Rate Limit Check');
-    const rateCheck = await rateLimit(deviceId);
+    const [rateCheck, body] = await Promise.all([
+      rateLimit(deviceId),
+      req.json(),
+    ]);
     profiler.stop('rate_limit', 'Rate Limit Check');
-    
+
     if (!rateCheck.success) {
       return NextResponse.json({ error: 'Too many requests. Please slow down.' }, { status: 429 });
     }
 
-    const body = await req.json();
     const { grid_data, disturbed_positions, thumbnail, source_mode, is_public, is_daily_challenge } = body;
 
     if (!grid_data || !grid_data.cols || !grid_data.rows || !grid_data.colors) {
