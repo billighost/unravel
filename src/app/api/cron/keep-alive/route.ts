@@ -8,15 +8,6 @@ import { neon } from '@neondatabase/serverless';
  * Executes a trivial indexed query to keep the connection warm.
  */
 export async function GET(req: Request) {
-  // Verify the request comes from Vercel Cron (or allow in dev)
-  const authHeader = req.headers.get('authorization');
-  if (
-    process.env.CRON_SECRET &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET}`
-  ) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     return NextResponse.json({ status: 'skipped', reason: 'No DATABASE_URL configured' });
