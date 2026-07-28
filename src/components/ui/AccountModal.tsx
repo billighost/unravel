@@ -529,7 +529,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         value={specialCode}
                         onChange={(e) => setSpecialCode(e.target.value)}
                         onFocus={() => setActiveField('specialCode')}
-                        inputMode={isTouchDevice ? 'none' : 'text'}
+                        inputMode={isTouchDevice ? 'none' : 'numeric'}
+                        pattern="[0-9]*"
                         readOnly={isTouchDevice}
                         style={{
                           width: '100%',
@@ -632,24 +633,24 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       {/* Render touch virtual keyboard/keypad */}
       {isTouchDevice && activeField && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10000 }}>
-          {(activeField === 'username' || activeField === 'specialCode') ? (
+          {activeField === 'username' ? (
             <CustomKeyboard
-              value={activeField === 'username' ? username : specialCode}
-              onChange={activeField === 'username' ? setUsername : setSpecialCode}
+              value={username}
+              onChange={setUsername}
               onDone={() => {
                 setActiveField(null);
                 usernameRef.current?.blur();
-                specialCodeRef.current?.blur();
               }}
             />
           ) : (
             <CustomKeypad
-              value={activeField === 'pin' ? pin : confirmPin}
-              onChange={activeField === 'pin' ? setPin : setConfirmPin}
+              value={activeField === 'pin' ? pin : activeField === 'confirmPin' ? confirmPin : specialCode}
+              onChange={activeField === 'pin' ? setPin : activeField === 'confirmPin' ? setConfirmPin : setSpecialCode}
               onDone={() => {
                 setActiveField(null);
                 pinRef.current?.blur();
                 confirmPinRef.current?.blur();
+                specialCodeRef.current?.blur();
               }}
             />
           )}
