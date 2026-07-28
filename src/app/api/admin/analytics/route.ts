@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAccountForSession, isAdminEmail, getAdminAnalytics } from '@/lib/db';
+import { getAssociatedUsername, isAdminUsername, getAdminAnalytics } from '@/lib/db';
 import { getCache, setCache } from '@/lib/cache';
 
 export const runtime = 'edge';
@@ -7,9 +7,8 @@ export const runtime = 'edge';
 async function checkAdmin(req: NextRequest): Promise<boolean> {
   const deviceId = req.headers.get('x-device-id');
   if (!deviceId) return false;
-  const account = await getAccountForSession(deviceId);
-  if (!account?.email) return false;
-  return isAdminEmail(account.email);
+  const username = await getAssociatedUsername(deviceId);
+  return isAdminUsername(username);
 }
 
 export async function GET(req: NextRequest) {

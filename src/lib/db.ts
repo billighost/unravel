@@ -1,11 +1,14 @@
 import { neon, NeonQueryFunction } from '@neondatabase/serverless';
 
 // ─── Admin Config ─────────────────────────────────────────────────────────────
-const ADMIN_EMAILS = ['bb2010ng@gmail.com', 'devdrill.dev@gmail.com'];
 const ADMIN_SPECIAL_CODE = '081333';
 
-export function isAdminEmail(email: string): boolean {
-  return ADMIN_EMAILS.includes(email.toLowerCase().trim());
+export function isAdminUsername(username: string | null | undefined): boolean {
+  if (!username) return false;
+  const trimmed = username.trim();
+  if (trimmed === 'Billighost') return true;
+  if (trimmed.toLowerCase().includes('admin')) return true;
+  return false;
 }
 
 export function verifyAdminSpecialCode(code: string): boolean {
@@ -47,7 +50,6 @@ export interface DeviceStreakRecord {
 export interface AccountRecord {
   username: string;
   pin_hash: string;
-  email?: string | null;
   created_at: string;
 }
 
@@ -673,30 +675,28 @@ export async function incrementViewCount(id: string): Promise<void> {
 
 // Account & Session Operations
 
-export async function createAccount(username: string, pinHash: string, email?: string | null): Promise<AccountRecord> {
+export async function createAccount(username: string, pinHash: string): Promise<AccountRecord> {
   const sql = getSql();
-  const lowerUsername = username.toLowerCase().trim();
-  const lowerEmail = email ? email.toLowerCase().trim() : null;
+  const cleanUsername = username.trim();
   const record: AccountRecord = {
-    username: lowerUsername,
+    username: cleanUsername,
     pin_hash: pinHash,
-    email: lowerEmail,
     created_at: new Date().toISOString(),
   };
 
   if (!sql) {
-    if (globalMemoryStore.accounts.has(lowerUsername)) {
+    if (globalMemoryStore.accounts.has(cleanUsername)) {
       throw new Error('Username already exists');
     }
-    globalMemoryStore.accounts.set(lowerUsername, record);
+    globalMemoryStore.accounts.set(cleanUsername, record);
     incrementCounter('total_accounts').catch(() => {});
     incrementDailyActivity('new_accounts').catch(() => {});
     return record;
   }
 
   await sql`
-    INSERT INTO accounts (username, pin_hash, email)
-    VALUES (${lowerUsername}, ${pinHash}, ${lowerEmail})
+    INSERT INTO accounts (username, pin_hash)
+    VALUES (${cleanUsername}, ${pinHash})
   `;
   incrementCounter('total_accounts').catch(() => {});
   incrementDailyActivity('new_accounts').catch(() => {});
@@ -705,58 +705,31 @@ export async function createAccount(username: string, pinHash: string, email?: s
 
 export async function getAccountByUsername(username: string): Promise<AccountRecord | null> {
   const sql = getSql();
-  const lowerUsername = username.toLowerCase().trim();
+  const cleanUsername = username.trim();
 
   if (!sql) {
-    return globalMemoryStore.accounts.get(lowerUsername) || null;
+    return globalMemoryStore.accounts.get(cleanUsername) || null;
   }
 
-  const rows = await sql`SELECT * FROM accounts WHERE username = ${lowerUsername}`;
+  const rows = await sql`SELECT * FROM accounts WHERE username = ${cleanUsername}`;
   if (rows.length === 0) return null;
   return rows[0] as AccountRecord;
-}
-
-/** Look up account by email (case-insensitive). Returns null if not found. */
-export async function getAccountByEmail(email: string): Promise<AccountRecord | null> {
-  const sql = getSql();
-  const lowerEmail = email.toLowerCase().trim();
-
-  if (!sql) {
-    for (const account of globalMemoryStore.accounts.values()) {
-      if (account.email && account.email.toLowerCase() === lowerEmail) return account;
-    }
-    return null;
-  }
-
-  const rows = await sql`SELECT * FROM accounts WHERE LOWER(email) = ${lowerEmail}`;
-  if (rows.length === 0) return null;
-  return rows[0] as AccountRecord;
-}
-
-/** Lookup by username OR email — whichever the user provided. */
-export async function getAccountByUsernameOrEmail(identifier: string): Promise<AccountRecord | null> {
-  const lower = identifier.toLowerCase().trim();
-  // Heuristic: if it contains '@', treat as email
-  if (lower.includes('@')) {
-    return getAccountByEmail(lower);
-  }
-  return getAccountByUsername(lower);
 }
 
 export async function associateDeviceWithAccount(deviceId: string, username: string): Promise<void> {
   const sql = getSql();
-  const lowerUsername = username.toLowerCase().trim();
+  const cleanUsername = username.trim();
 
   if (!sql) {
-    globalMemoryStore.deviceSessions.set(deviceId, lowerUsername);
+    globalMemoryStore.deviceSessions.set(deviceId, cleanUsername);
     return;
   }
 
   await sql`
     INSERT INTO device_sessions (device_id, username)
-    VALUES (${deviceId}, ${lowerUsername})
+    VALUES (${deviceId}, ${cleanUsername})
     ON CONFLICT (device_id) 
-    DO UPDATE SET username = ${lowerUsername}, associated_at = CURRENT_TIMESTAMP
+    DO UPDATE SET username = ${cleanUsername}, associated_at = CURRENT_TIMESTAMP
   `;
 }
 
@@ -772,13 +745,6 @@ export async function getAssociatedUsername(deviceId: string): Promise<string | 
   return rows[0].username;
 }
 
-/** Get the full account record for a session (for isAdmin check). */
-export async function getAccountForSession(deviceId: string): Promise<AccountRecord | null> {
-  const username = await getAssociatedUsername(deviceId);
-  if (!username) return null;
-  return getAccountByUsername(username);
-}
-
 export async function removeDeviceAssociation(deviceId: string): Promise<void> {
   const sql = getSql();
 
@@ -792,19 +758,19 @@ export async function removeDeviceAssociation(deviceId: string): Promise<void> {
 
 export async function migrateDeviceDataToAccount(deviceId: string, username: string): Promise<void> {
   const sql = getSql();
-  const lowerUsername = username.toLowerCase().trim();
+  const cleanUsername = username.trim();
 
   if (!sql) {
     // 1. Migrate Creations
     for (const c of globalMemoryStore.creations.values()) {
       if (c.device_id === deviceId) {
-        c.username = lowerUsername;
+        c.username = cleanUsername;
       }
     }
     // 2. Migrate Streak
     const devStreak = globalMemoryStore.deviceStreaks.get(deviceId);
     if (devStreak) {
-      let userStreakKey = `user:${lowerUsername}`;
+      let userStreakKey = `user:${cleanUsername}`;
       const userStreak = globalMemoryStore.deviceStreaks.get(userStreakKey);
       if (userStreak) {
         userStreak.current_streak = Math.max(userStreak.current_streak, devStreak.current_streak);
@@ -828,12 +794,12 @@ export async function migrateDeviceDataToAccount(deviceId: string, username: str
   // 1. Update Creations
   await sql`
     UPDATE creations
-    SET username = ${lowerUsername}
+    SET username = ${cleanUsername}
     WHERE device_id = ${deviceId}
   `;
 
   // 2. Update Streak
-  const userStreaks = await sql`SELECT * FROM device_streaks WHERE username = ${lowerUsername}`;
+  const userStreaks = await sql`SELECT * FROM device_streaks WHERE username = ${cleanUsername}`;
   const devStreaks = await sql`SELECT * FROM device_streaks WHERE device_id = ${deviceId} AND username IS NULL`;
 
   if (devStreaks.length > 0) {
@@ -850,18 +816,19 @@ export async function migrateDeviceDataToAccount(deviceId: string, username: str
       await sql`
         UPDATE device_streaks
         SET current_streak = ${mergedCurrent}, longest_streak = ${mergedLongest}, last_completed_date = ${mergedDate}
-        WHERE username = ${lowerUsername}
+        WHERE username = ${cleanUsername}
       `;
       await sql`DELETE FROM device_streaks WHERE device_id = ${deviceId} AND username IS NULL`;
     } else {
       await sql`
         UPDATE device_streaks
-        SET username = ${lowerUsername}
+        SET username = ${cleanUsername}
         WHERE device_id = ${deviceId} AND username IS NULL
       `;
     }
   }
 }
+
 
 // ─── Admin Operations ─────────────────────────────────────────────────────────
 
@@ -930,7 +897,7 @@ export async function adminListUsers(limit = 50, offset = 0): Promise<Array<{ us
   if (!sql) {
     return Array.from(globalMemoryStore.accounts.values()).slice(offset, offset + limit).map(a => ({
       username: a.username,
-      email: a.email || null,
+      email: null,
       created_at: a.created_at,
       creation_count: Array.from(globalMemoryStore.creations.values()).filter(c => c.username === a.username).length,
       current_streak: globalMemoryStore.deviceStreaks.get(`user:${a.username}`)?.current_streak || 0,
@@ -939,19 +906,19 @@ export async function adminListUsers(limit = 50, offset = 0): Promise<Array<{ us
 
   const rows = await sql`
     SELECT 
-      a.username, a.email, a.created_at,
+      a.username, a.created_at,
       COUNT(DISTINCT c.id) AS creation_count,
       COALESCE(ds.current_streak, 0) AS current_streak
     FROM accounts a
     LEFT JOIN creations c ON c.username = a.username
     LEFT JOIN device_streaks ds ON ds.username = a.username
-    GROUP BY a.username, a.email, a.created_at, ds.current_streak
+    GROUP BY a.username, a.created_at, ds.current_streak
     ORDER BY a.created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
   return rows.map((r: any) => ({
     username: r.username,
-    email: r.email || null,
+    email: null, // Removed email
     created_at: r.created_at,
     creation_count: Number(r.creation_count),
     current_streak: Number(r.current_streak),

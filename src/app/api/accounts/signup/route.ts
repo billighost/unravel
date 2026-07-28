@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { createAccount, getAccountByUsername, getAccountByEmail, associateDeviceWithAccount, migrateDeviceDataToAccount, isAdminEmail, verifyAdminSpecialCode } from '@/lib/db';
+import { createAccount, getAccountByUsername, associateDeviceWithAccount, migrateDeviceDataToAccount, isAdminUsername, verifyAdminSpecialCode } from '@/lib/db';
 import { rateLimit } from '@/lib/ratelimit';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { username, pin, email, specialCode } = body;
+    const { username, pin, specialCode } = body;
     const deviceId = req.headers.get('x-device-id');
 
     if (!deviceId) {
@@ -21,30 +21,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'PIN must be at least 6 numeric digits.' }, { status: 400 });
     }
 
-    const cleanUsername = username.toLowerCase().trim();
-    if (!/^[a-z0-9_]+$/.test(cleanUsername)) {
+    const cleanUsername = username.trim();
+    if (!/^[a-zA-Z0-9_]+$/.test(cleanUsername)) {
       return NextResponse.json({ error: 'Username can only contain letters, numbers, and underscores.' }, { status: 400 });
     }
 
-    // Validate email if provided
-    const cleanEmail = email ? email.toLowerCase().trim() : null;
-    if (cleanEmail) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-        return NextResponse.json({ error: 'Invalid email address.' }, { status: 400 });
-      }
-      // Admin email gating
-      if (isAdminEmail(cleanEmail)) {
-        if (!specialCode || !verifyAdminSpecialCode(specialCode)) {
-          return NextResponse.json({
-            error: 'This email is reserved for admin accounts. Please provide the special code to register.',
-            requiresSpecialCode: true,
-          }, { status: 403 });
-        }
-      }
-      // Check if email already used
-      const emailTaken = await getAccountByEmail(cleanEmail);
-      if (emailTaken) {
-        return NextResponse.json({ error: 'This email is already associated with an account.' }, { status: 409 });
+    // Admin username gating
+    if (isAdminUsername(cleanUsername)) {
+      // "billighost" is auto-admin, no special code required if they manage to grab it first.
+      // But let's require the code for any username containing 'admin' or 'billighost' just to be secure.
+      if (!specialCode || !verifyAdminSpecialCode(specialCode)) {
+        return NextResponse.json({
+          error: 'This username is reserved for admin accounts. Please provide the special code to register.',
+          requiresSpecialCode: true,
+        }, { status: 403 });
       }
     }
 
@@ -64,8 +54,8 @@ export async function POST(req: NextRequest) {
     // Hash PIN
     const pinHash = await bcrypt.hash(pin, 10);
 
-    // Create account (with optional email)
-    await createAccount(cleanUsername, pinHash, cleanEmail);
+    // Create account
+    await createAccount(cleanUsername, pinHash);
 
     // Migrate creations and streak
     await migrateDeviceDataToAccount(deviceId, cleanUsername);
@@ -73,7 +63,7 @@ export async function POST(req: NextRequest) {
     // Login (associate device session)
     await associateDeviceWithAccount(deviceId, cleanUsername);
 
-    const adminFlag = cleanEmail ? isAdminEmail(cleanEmail) : false;
+    const adminFlag = isAdminUsername(cleanUsername);
 
     return NextResponse.json({ success: true, username: cleanUsername, isAdmin: adminFlag });
   } catch (err: any) {

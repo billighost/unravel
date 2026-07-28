@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, Key, Check, AlertTriangle, LogOut, Flame, Mail, ShieldCheck } from 'lucide-react';
+import { X, User, Key, Check, AlertTriangle, LogOut, Flame, ShieldCheck } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { getDeviceId } from '@/lib/deviceId';
 import { soundEngine } from '@/lib/audio/soundEngine';
@@ -18,8 +18,6 @@ interface AccountModalProps {
   onClose: () => void;
 }
 
-const ADMIN_EMAILS = ['bb2010ng@gmail.com', 'devdrill.dev@gmail.com'];
-
 export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) => {
   const currentUsername = useAppStore((state) => state.username);
   const setStoreUsername = useAppStore((state) => state.setUsername);
@@ -27,7 +25,6 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
   const [mode, setMode] = useState<'login' | 'signup'>('signup');
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [specialCode, setSpecialCode] = useState('');
   const [showSpecialCode, setShowSpecialCode] = useState(false);
   const [pin, setPin] = useState('');
@@ -42,11 +39,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
   // Virtual keyboard touch device detection
   const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const [activeField, setActiveField] = useState<'username' | 'email' | 'specialCode' | 'pin' | 'confirmPin' | null>(null);
+  const [activeField, setActiveField] = useState<'username' | 'specialCode' | 'pin' | 'confirmPin' | null>(null);
 
   // Refs for underlying hidden inputs to maintain focus & cursor behavior
   const usernameRef = useRef<HTMLInputElement>(null);
-  const emailRef = useRef<HTMLInputElement>(null);
   const specialCodeRef = useRef<HTMLInputElement>(null);
   const pinRef = useRef<HTMLInputElement>(null);
   const confirmPinRef = useRef<HTMLInputElement>(null);
@@ -88,7 +84,6 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       setIsSuccess(false);
       setIsLoading(false);
       setUsername('');
-      setEmail('');
       setSpecialCode('');
       setShowSpecialCode(false);
       setPin('');
@@ -97,13 +92,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     }
   }, [isOpen, mode]);
 
-  // Detect if typed email is an admin email to show special code field
+  // Detect if typed username requires an admin special code
   useEffect(() => {
     if (mode === 'signup') {
-      const isAdminMail = ADMIN_EMAILS.includes(email.toLowerCase().trim());
-      setShowSpecialCode(isAdminMail && email.trim().length > 0);
+      const trimmed = username.trim();
+      const requiresCode = trimmed.toLowerCase().includes('admin') || trimmed === 'Billighost';
+      setShowSpecialCode(requiresCode);
     }
-  }, [email, mode]);
+  }, [username, mode]);
 
   if (!isOpen) return null;
 
@@ -167,10 +163,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       return;
     }
 
-    // Client-side admin email gate check
-    if (mode === 'signup' && email.trim() && ADMIN_EMAILS.includes(email.toLowerCase().trim())) {
+    // Client-side admin gating check
+    const trimmed = username.trim();
+    if (mode === 'signup' && (trimmed.toLowerCase().includes('admin') || trimmed === 'Billighost')) {
       if (!specialCode.trim()) {
-        setError('This email requires a special code. Please enter it below.');
+        setError('This username is reserved. Please enter the special code below.');
         return;
       }
     }
@@ -185,9 +182,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         username: username.trim(),
         pin,
       };
-      if (mode === 'signup' && email.trim()) {
-        body.email = email.trim();
-        if (specialCode.trim()) body.specialCode = specialCode.trim();
+      if (mode === 'signup' && specialCode.trim()) {
+        body.specialCode = specialCode.trim();
       }
 
       const res = await fetch(url, {
@@ -234,7 +230,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       } else {
         if (data.requiresSpecialCode) {
           setShowSpecialCode(true);
-          showToast('This email is reserved. Enter the special code to register.', 'error');
+          showToast('This username is reserved. Enter the special code to register.', 'error');
         }
         setError(data.error || 'Request failed.');
       }
@@ -514,82 +510,41 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                       }}
                     />
                   </div>
-                </div>
-
-                {/* Email (signup only) */}
-                {mode === 'signup' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                    <label className="font-heading" style={{ fontSize: '0.75rem', color: 'var(--ink)' }}>
-                      EMAIL <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', fontSize: '0.65rem' }}>(OPTIONAL)</span>
-                    </label>
-                    <div style={{ position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>
-                        <Mail size={16} />
-                      </span>
+                  
+                  {/* Special code field — shown when admin username detected */}
+                  {mode === 'signup' && showSpecialCode && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.4rem' }}
+                    >
+                      <label className="font-heading" style={{ fontSize: '0.75rem', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <ShieldCheck size={13} /> SPECIAL CODE
+                      </label>
                       <input
-                        ref={emailRef}
-                        type="email"
-                        placeholder="your@email.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        onFocus={() => setActiveField('email')}
-                        inputMode={isTouchDevice ? 'none' : 'email'}
+                        ref={specialCodeRef}
+                        type="text"
+                        placeholder="Enter special access code"
+                        value={specialCode}
+                        onChange={(e) => setSpecialCode(e.target.value)}
+                        onFocus={() => setActiveField('specialCode')}
+                        inputMode={isTouchDevice ? 'none' : 'text'}
                         readOnly={isTouchDevice}
                         style={{
                           width: '100%',
-                          padding: '0.65rem 0.75rem 0.65rem 2.25rem',
-                          backgroundColor: 'var(--bg)',
-                          border: '3px solid var(--ink)',
-                          boxShadow: '2px 2px 0 var(--ink)',
+                          padding: '0.65rem 0.75rem',
+                          backgroundColor: 'rgba(255,59,48,0.05)',
+                          border: '2px solid var(--accent)',
                           fontFamily: 'var(--font-body)',
                           fontSize: '0.8rem',
                           outline: 'none',
+                          letterSpacing: '0.15em',
                         }}
                       />
-                    </div>
-
-                    {/* Special code field — shown when admin email detected */}
-                    {showSpecialCode && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.4rem' }}
-                      >
-                        <label className="font-heading" style={{ fontSize: '0.75rem', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <ShieldCheck size={13} /> SPECIAL CODE
-                        </label>
-                        <input
-                          ref={specialCodeRef}
-                          type="text"
-                          placeholder="Enter special access code"
-                          value={specialCode}
-                          onChange={(e) => setSpecialCode(e.target.value)}
-                          onFocus={() => setActiveField('specialCode')}
-                          inputMode={isTouchDevice ? 'none' : 'text'}
-                          readOnly={isTouchDevice}
-                          style={{
-                            width: '100%',
-                            padding: '0.65rem 0.75rem',
-                            backgroundColor: 'rgba(255,59,48,0.05)',
-                            border: '2px solid var(--accent)',
-                            fontFamily: 'var(--font-body)',
-                            fontSize: '0.8rem',
-                            outline: 'none',
-                            letterSpacing: '0.15em',
-                          }}
-                        />
-                      </motion.div>
-                    )}
-                  </div>
-                )}
-
-                {/* Login: show email OR username hint */}
-                {mode === 'login' && (
-                  <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '-0.5rem' }}>
-                    You can log in with your username or email.
-                  </p>
-                )}
+                    </motion.div>
+                  )}
+                </div>
 
                 {/* PIN (Hidden input with visual slots) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', position: 'relative' }}>
@@ -677,14 +632,13 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       {/* Render touch virtual keyboard/keypad */}
       {isTouchDevice && activeField && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10000 }}>
-          {(activeField === 'username' || activeField === 'email' || activeField === 'specialCode') ? (
+          {(activeField === 'username' || activeField === 'specialCode') ? (
             <CustomKeyboard
-              value={activeField === 'username' ? username : activeField === 'email' ? email : specialCode}
-              onChange={activeField === 'username' ? setUsername : activeField === 'email' ? setEmail : setSpecialCode}
+              value={activeField === 'username' ? username : specialCode}
+              onChange={activeField === 'username' ? setUsername : setSpecialCode}
               onDone={() => {
                 setActiveField(null);
                 usernameRef.current?.blur();
-                emailRef.current?.blur();
                 specialCodeRef.current?.blur();
               }}
             />

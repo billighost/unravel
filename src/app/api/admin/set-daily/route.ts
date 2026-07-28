@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAccountForSession, isAdminEmail, setDailyChallenge } from '@/lib/db';
+import { getAssociatedUsername, isAdminUsername, setDailyChallenge } from '@/lib/db';
 import { setCache } from '@/lib/cache';
 
 export const runtime = 'edge';
@@ -7,9 +7,8 @@ export const runtime = 'edge';
 async function checkAdmin(req: NextRequest): Promise<boolean> {
   const deviceId = req.headers.get('x-device-id');
   if (!deviceId) return false;
-  const account = await getAccountForSession(deviceId);
-  if (!account?.email) return false;
-  return isAdminEmail(account.email);
+  const username = await getAssociatedUsername(deviceId);
+  return isAdminUsername(username);
 }
 
 export async function POST(req: NextRequest) {
