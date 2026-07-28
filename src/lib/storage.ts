@@ -242,13 +242,16 @@ export function generateThumbnailDataUrl(gridData: SavedGridData): string {
 
     const imgData = tempCtx.createImageData(cols, rows);
     const data = imgData.data;
+    
+    // Decompress if colors is a hex string
+    const colorArray = typeof colors === 'string' ? decompressColors(colors) : colors;
 
     for (let i = 0; i < cols * rows; i++) {
       const i3 = i * 3;
       const i4 = i * 4;
-      data[i4] = colors[i3] !== undefined ? Math.round(colors[i3] * 255) : 0;
-      data[i4 + 1] = colors[i3 + 1] !== undefined ? Math.round(colors[i3 + 1] * 255) : 0;
-      data[i4 + 2] = colors[i3 + 2] !== undefined ? Math.round(colors[i3 + 2] * 255) : 0;
+      data[i4] = colorArray[i3] !== undefined ? Math.round(colorArray[i3] * 255) : 0;
+      data[i4 + 1] = colorArray[i3 + 1] !== undefined ? Math.round(colorArray[i3 + 1] * 255) : 0;
+      data[i4 + 2] = colorArray[i3 + 2] !== undefined ? Math.round(colorArray[i3 + 2] * 255) : 0;
       data[i4 + 3] = 255;
     }
     tempCtx.putImageData(imgData, 0, 0);
