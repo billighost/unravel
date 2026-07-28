@@ -4,6 +4,8 @@ import { rateLimit } from '@/lib/ratelimit';
 import { Profiler } from '@/lib/profiler';
 import { enqueueBackgroundJob } from '@/lib/qstash';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   const profiler = new Profiler();
   try {
@@ -25,6 +27,12 @@ export async function POST(req: NextRequest) {
 
     if (!grid_data || !grid_data.cols || !grid_data.rows || !grid_data.colors) {
       return NextResponse.json({ error: 'Invalid grid_data structure' }, { status: 400 });
+    }
+
+    // Accept hex-compressed colors (string) OR legacy raw number[] — both handled in db.ts
+    // The frontend already sends hex via compressColors(), but we defend against old clients.
+    if (typeof grid_data.colors !== 'string' && !Array.isArray(grid_data.colors)) {
+      return NextResponse.json({ error: 'grid_data.colors must be a hex string or number array' }, { status: 400 });
     }
 
     const id = `c_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;

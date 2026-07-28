@@ -221,8 +221,20 @@ export async function incrementDailyActivity(field: 'creations_count' | 'public_
 export async function createCreation(record: Omit<CreationRecord, 'created_at' | 'report_count' | 'is_hidden' | 'view_count'>): Promise<CreationRecord> {
   const sql = getSql();
 
+  // If colors is still an array, compress it to hex before saving to save space
+  const processedGridData = { ...record.grid_data };
+  if (Array.isArray(processedGridData.colors)) {
+    let hex = '';
+    for (let i = 0; i < processedGridData.colors.length; i++) {
+      const val = Math.min(255, Math.max(0, Math.round(processedGridData.colors[i] * 255)));
+      hex += val.toString(16).padStart(2, '0');
+    }
+    processedGridData.colors = hex;
+  }
+
   const fullRecord: CreationRecord = {
     ...record,
+    grid_data: processedGridData,
     username: record.username || null,
     created_at: new Date().toISOString(),
     report_count: 0,
@@ -303,9 +315,20 @@ export async function getCreationById(id: string): Promise<CreationRecord | null
   const rows = await sql`SELECT * FROM creations WHERE id = ${id} AND is_hidden = FALSE`;
   if (rows.length === 0) return null;
   const row = rows[0] as any;
+  
+  const grid_data = typeof row.grid_data === 'string' ? JSON.parse(row.grid_data) : row.grid_data;
+  if (Array.isArray(grid_data.colors)) {
+    let hex = '';
+    for (let i = 0; i < grid_data.colors.length; i++) {
+      const val = Math.min(255, Math.max(0, Math.round(grid_data.colors[i] * 255)));
+      hex += val.toString(16).padStart(2, '0');
+    }
+    grid_data.colors = hex;
+  }
+
   return {
     ...row,
-    grid_data: typeof row.grid_data === 'string' ? JSON.parse(row.grid_data) : row.grid_data,
+    grid_data,
     disturbed_positions: typeof row.disturbed_positions === 'string' ? JSON.parse(row.disturbed_positions) : row.disturbed_positions,
   };
 }
@@ -378,10 +401,11 @@ export async function getPublicGallery(
 export async function getUserCreations(
   deviceId: string,
   limit = 30,
-  offset = 0
+  offset = 0,
+  knownUsername?: string | null
 ): Promise<CreationRecord[]> {
   const sql = getSql();
-  const username = await getAssociatedUsername(deviceId);
+  const username = knownUsername !== undefined ? knownUsername : await getAssociatedUsername(deviceId);
 
   if (!sql) {
     let list = Array.from(globalMemoryStore.creations.values())
@@ -485,9 +509,18 @@ export async function getDailyChallenge(): Promise<CreationRecord | null> {
   `;
   if (rows.length > 0) {
     const row = rows[0] as any;
+    const grid_data = typeof row.grid_data === 'string' ? JSON.parse(row.grid_data) : row.grid_data;
+    if (Array.isArray(grid_data.colors)) {
+      let hex = '';
+      for (let i = 0; i < grid_data.colors.length; i++) {
+        const val = Math.min(255, Math.max(0, Math.round(grid_data.colors[i] * 255)));
+        hex += val.toString(16).padStart(2, '0');
+      }
+      grid_data.colors = hex;
+    }
     return {
       ...row,
-      grid_data: typeof row.grid_data === 'string' ? JSON.parse(row.grid_data) : row.grid_data,
+      grid_data,
       disturbed_positions: typeof row.disturbed_positions === 'string' ? JSON.parse(row.disturbed_positions) : row.disturbed_positions,
     };
   }
@@ -780,7 +813,7 @@ export async function migrateDeviceDataToAccount(deviceId: string, username: str
         }
         globalMemoryStore.deviceStreaks.delete(deviceId);
       } else {
-        devStreak.username = lowerUsername;
+        devStreak.username = cleanUsername;
         globalMemoryStore.deviceStreaks.set(userStreakKey, {
           ...devStreak,
           device_id: userStreakKey,

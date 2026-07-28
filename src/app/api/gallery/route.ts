@@ -15,10 +15,15 @@ export async function GET(req: NextRequest) {
     const beforeId = searchParams.get('before_id');
     const filter = searchParams.get('filter');
     const deviceId = req.headers.get('x-device-id') || 'anonymous_device';
+    // Single lookup for the username to use in both the cache check (later) and DB queries
+    const username = await (async () => {
+      const { getAssociatedUsername } = await import('@/lib/db');
+      return getAssociatedUsername(deviceId);
+    })();
 
     if (filter === 'my') {
       profiler.start('db', 'Database Query My Creations');
-      const items = await getUserCreations(deviceId, limit, offset);
+      const items = await getUserCreations(deviceId, limit, offset, username);
       profiler.stop('db', 'Database Query My Creations');
 
       profiler.stop('total', 'Total Request Time');
@@ -40,6 +45,13 @@ export async function GET(req: NextRequest) {
     profiler.start('cache', 'Cache Check');
     const version = await getGalleryVersion();
     const cacheKey = `cache:gallery:v${version}:${limit}:${offset}:${beforeDate || ''}:${beforeId || ''}`;
+    
+    const etag = `"${cacheKey}"`;
+    if (req.headers.get('if-none-match') === etag) {
+      profiler.stop('total', 'Total Request Time');
+      return new NextResponse(null, { status: 304 });
+    }
+
     const cachedData = await getCache(cacheKey);
     profiler.stop('cache', 'Cache Check');
 
@@ -58,6 +70,7 @@ export async function GET(req: NextRequest) {
         response.headers.set(k, v);
       });
       response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=59');
+      response.headers.set('ETag', etag);
       return response;
     }
 
@@ -83,6 +96,7 @@ export async function GET(req: NextRequest) {
       response.headers.set(k, v);
     });
     response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=59');
+    response.headers.set('ETag', etag);
     return response;
   } catch (err: any) {
     console.error('GET /api/gallery error:', err);

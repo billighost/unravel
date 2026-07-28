@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAssociatedUsername, isAdminUsername, setDailyChallenge } from '@/lib/db';
+import { setDailyChallenge } from '@/lib/db';
 import { setCache } from '@/lib/cache';
+import { requireAdmin } from '@/lib/adminAuth';
 
 export const runtime = 'edge';
 
-async function checkAdmin(req: NextRequest): Promise<boolean> {
-  const deviceId = req.headers.get('x-device-id');
-  if (!deviceId) return false;
-  const username = await getAssociatedUsername(deviceId);
-  return isAdminUsername(username);
-}
-
 export async function POST(req: NextRequest) {
   try {
-    if (!(await checkAdmin(req))) {
+    if (!(await requireAdmin(req))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 

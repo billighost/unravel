@@ -4,6 +4,8 @@ import { rateLimit } from '@/lib/ratelimit';
 import { Profiler } from '@/lib/profiler';
 import { invalidateCache, incrementGalleryVersion } from '@/lib/cache';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const profiler = new Profiler();
   try {

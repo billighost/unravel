@@ -28,9 +28,13 @@ export async function GET(req: NextRequest) {
     if (username) {
       // Determine admin status from username
       const adminFlag = isAdminUsername(username);
-      return NextResponse.json({ loggedIn: true, username, isAdmin: adminFlag });
+      const response = NextResponse.json({ loggedIn: true, username, isAdmin: adminFlag });
+      response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
+      return response;
     } else {
-      return NextResponse.json({ loggedIn: false });
+      const response = NextResponse.json({ loggedIn: false });
+      response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
+      return response;
     }
   } catch (err: any) {
     console.error('Session retrieval error:', err);

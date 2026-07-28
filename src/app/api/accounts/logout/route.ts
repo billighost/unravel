@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { removeDeviceAssociation } from '@/lib/db';
 import { invalidateCache } from '@/lib/cache';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
     const deviceId = req.headers.get('x-device-id');

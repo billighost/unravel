@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateDeviceStreak } from '@/lib/db';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
     const deviceId = req.headers.get('x-device-id') || 'anonymous_device';

@@ -45,11 +45,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       profiler.stop('total', 'Total Request Time');
       profiler.log(`/api/creations/${id} (CACHED)`);
 
+      const etag = `"creation-${id}-${cachedCreation.view_count || 0}"`;
+      if (req.headers.get('if-none-match') === etag) {
+        return new NextResponse(null, { status: 304 });
+      }
+
       const response = NextResponse.json({ success: true, creation: cachedCreation });
       Object.entries(profiler.getHeaders()).forEach(([k, v]) => {
         response.headers.set(k, v);
       });
       response.headers.set('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+      response.headers.set('ETag', etag);
       return response;
     }
 
@@ -70,11 +76,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     profiler.stop('total', 'Total Request Time');
     profiler.log(`/api/creations/${id} (MISS)`);
 
+    const etag = `"creation-${id}-${creation.view_count || 0}"`;
     const response = NextResponse.json({ success: true, creation });
     Object.entries(profiler.getHeaders()).forEach(([k, v]) => {
       response.headers.set(k, v);
     });
     response.headers.set('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+    response.headers.set('ETag', etag);
     return response;
   } catch (err: any) {
     console.error('GET /api/creations/:id error:', err);
