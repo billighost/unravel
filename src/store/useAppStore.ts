@@ -9,12 +9,14 @@ interface AppState {
   gridData: SampledGridResult;
   isDisturbed: boolean;
   username: string | null;
+  isAdmin: boolean;
   
   setMode: (mode: AppMode) => void;
   setGridData: (gridData: SampledGridResult, sourceMode?: string) => void;
   setIsDisturbed: (isDisturbed: boolean) => void;
   resetToDemo: () => void;
   setUsername: (username: string | null) => void;
+  setIsAdmin: (isAdmin: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -22,6 +24,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   gridData: generateDemoGrid(60, 40),
   isDisturbed: false,
   username: null,
+  isAdmin: false,
 
   setMode: (mode) => set({ mode }),
   
@@ -62,4 +65,5 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   setUsername: (username) => set({ username }),
+  setIsAdmin: (isAdmin) => set({ isAdmin }),
 }));

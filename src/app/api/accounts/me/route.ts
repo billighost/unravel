@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAssociatedUsername } from '@/lib/db';
+import { getAssociatedUsername, getAccountForSession, isAdminEmail } from '@/lib/db';
 import { getCache, setCache } from '@/lib/cache';
 
 export const runtime = 'edge';
@@ -26,7 +26,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (username) {
-      return NextResponse.json({ loggedIn: true, username });
+      // Determine admin status from account email
+      const account = await getAccountForSession(deviceId);
+      const adminFlag = account?.email ? isAdminEmail(account.email) : false;
+      return NextResponse.json({ loggedIn: true, username, isAdmin: adminFlag });
     } else {
       return NextResponse.json({ loggedIn: false });
     }

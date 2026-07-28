@@ -14,12 +14,15 @@ import { soundEngine } from '@/lib/audio/soundEngine';
 import { t } from '@/lib/i18n/strings';
 
 const BRUSH_SIZES = [
-  { label: 'S', radius: 4 },
-  { label: 'M', radius: 10 },
-  { label: 'L', radius: 20 },
+  { label: '1', radius: 3, name: 'Extra Fine' },
+  { label: '2', radius: 9, name: 'Fine' },
+  { label: '3', radius: 18, name: 'Medium' },
+  { label: '4', radius: 30, name: 'Thick' },
+  { label: '5', radius: 45, name: 'Extra Thick' },
+  { label: '6', radius: 60, name: 'Jumbo' },
 ];
 
-type BrushType = 'marker' | 'chalk' | 'spray' | 'calligraphy';
+type BrushType = 'marker' | 'chalk' | 'spray' | 'calligraphy' | 'eraser';
 
 interface BrushTypeOption {
   id: BrushType;
@@ -32,7 +35,18 @@ const BRUSH_TYPES: BrushTypeOption[] = [
   { id: 'chalk', label: 'CHALK', desc: 'Textured, rough edges' },
   { id: 'spray', label: 'SPRAY', desc: 'Scattered dot texture' },
   { id: 'calligraphy', label: 'CALLIG.', desc: 'Speed-sensitive width' },
+  { id: 'eraser', label: 'ERASER', desc: 'Clear drawn strokes' },
 ];
+
+const BG_COLORS = [
+  { hex: '#000000', label: 'DARK' },
+  { hex: '#1A1A1A', label: 'CHARCOAL' },
+  { hex: '#F7F6F2', label: 'CREAM' },
+  { hex: '#FFFFFF', label: 'WHITE' },
+  { hex: '#0B132B', label: 'NAVY' },
+  { hex: '#1B3B2B', label: 'FOREST' },
+];
+
 
 /** Generate a fully random pleasant HSB color */
 function randomStartColor(): string {
@@ -55,6 +69,19 @@ export const DrawMode: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isToolbarMinimized, setIsToolbarMinimized] = useState(false);
 
+  // Background and additional popover states
+  const [canvasBgColor, setCanvasBgColor] = useState('#000000');
+  const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
+  const [isSizePickerOpen, setIsSizePickerOpen] = useState(false);
+
+  // Popover positioning elements & coords
+  const brushBtnRef = useRef<HTMLButtonElement>(null);
+  const sizeBtnRef = useRef<HTMLButtonElement>(null);
+  const bgBtnRef = useRef<HTMLButtonElement>(null);
+  const [brushCoords, setBrushCoords] = useState({ left: 0, bottom: 0 });
+  const [sizeCoords, setSizeCoords] = useState({ left: 0, bottom: 0 });
+  const [bgCoords, setBgCoords] = useState({ left: 0, bottom: 0 });
+
   // Stroke tracking
   const lastPointRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
@@ -65,15 +92,14 @@ export const DrawMode: React.FC = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.width = 600;
-    canvas.height = 400;
+    canvas.width = 1800;
+    canvas.height = 1200;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Fill initial black background
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Keep initial canvas transparent
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Save initial state
     historyRef.current = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
@@ -110,11 +136,11 @@ export const DrawMode: React.FC = () => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     historyRef.current = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
     setCanUndo(false);
   };
+
 
   const getCanvasCoords = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -137,7 +163,15 @@ export const DrawMode: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    ctx.save();
+    if (currentBrush === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
     switch (currentBrush) {
+      case 'eraser':
       case 'marker': {
         ctx.strokeStyle = currentColor;
         ctx.fillStyle = currentColor;
@@ -174,7 +208,6 @@ export const DrawMode: React.FC = () => {
             ctx.fill();
           }
         }
-        ctx.globalAlpha = 1;
         break;
       }
 
@@ -201,7 +234,6 @@ export const DrawMode: React.FC = () => {
             ctx.fill();
           }
         }
-        ctx.globalAlpha = 1;
         break;
       }
 
@@ -222,10 +254,10 @@ export const DrawMode: React.FC = () => {
         ctx.moveTo(fromX, fromY);
         ctx.lineTo(toX, toY);
         ctx.stroke();
-        ctx.globalAlpha = 1;
         break;
       }
     }
+    ctx.restore();
   }, [currentBrush, currentColor, currentSize]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -277,17 +309,78 @@ export const DrawMode: React.FC = () => {
   const handleConvert = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    
+    // Create temporary canvas to fill the chosen background color under drawing
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (tempCtx) {
+      tempCtx.fillStyle = canvasBgColor;
+      tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      tempCtx.drawImage(canvas, 0, 0);
+    }
+
     const tierDraw = qualityTierManager.getConfig().gridResolutionDraw;
-    const sampled = sampleCanvasToGrid(canvas, tierDraw);
+    const sampled = sampleCanvasToGrid(tempCtx ? tempCanvas : canvas, tierDraw);
     setGridData(sampled);
   };
 
-  // Close brush picker on backdrop click
+
+  // Trigger actions to measure button positions and toggle popovers
+  const handleOpenBrushPicker = () => {
+    soundEngine.playUIClick();
+    if (!isBrushPickerOpen && brushBtnRef.current) {
+      const rect = brushBtnRef.current.getBoundingClientRect();
+      setBrushCoords({
+        left: rect.left + rect.width / 2,
+        bottom: window.innerHeight - rect.top,
+      });
+    }
+    setIsBrushPickerOpen(!isBrushPickerOpen);
+    setIsSizePickerOpen(false);
+    setIsBgPickerOpen(false);
+  };
+
+  const handleOpenSizePicker = () => {
+    soundEngine.playUIClick();
+    if (!isSizePickerOpen && sizeBtnRef.current) {
+      const rect = sizeBtnRef.current.getBoundingClientRect();
+      setSizeCoords({
+        left: rect.left + rect.width / 2,
+        bottom: window.innerHeight - rect.top,
+      });
+    }
+    setIsSizePickerOpen(!isSizePickerOpen);
+    setIsBrushPickerOpen(false);
+    setIsBgPickerOpen(false);
+  };
+
+  const handleOpenBgPicker = () => {
+    soundEngine.playUIClick();
+    if (!isBgPickerOpen && bgBtnRef.current) {
+      const rect = bgBtnRef.current.getBoundingClientRect();
+      setBgCoords({
+        left: rect.left + rect.width / 2,
+        bottom: window.innerHeight - rect.top,
+      });
+    }
+    setIsBgPickerOpen(!isBgPickerOpen);
+    setIsBrushPickerOpen(false);
+    setIsSizePickerOpen(false);
+  };
+
+  // Backdrops
   const brushPickerBackdrop = isBrushPickerOpen ? (
-    <div
-      onClick={() => setIsBrushPickerOpen(false)}
-      style={{ position: 'fixed', inset: 0, zIndex: 89 }}
-    />
+    <div onClick={() => setIsBrushPickerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 230 }} />
+  ) : null;
+
+  const sizePickerBackdrop = isSizePickerOpen ? (
+    <div onClick={() => setIsSizePickerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 230 }} />
+  ) : null;
+
+  const bgPickerBackdrop = isBgPickerOpen ? (
+    <div onClick={() => setIsBgPickerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 230 }} />
   ) : null;
 
   // --- Toolbar Controls (shared between normal and fullscreen) ---
@@ -302,10 +395,8 @@ export const DrawMode: React.FC = () => {
       {/* Brush Type Selector */}
       <div style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
         <button
-          onClick={() => {
-            soundEngine.playUIClick();
-            setIsBrushPickerOpen(!isBrushPickerOpen);
-          }}
+          ref={brushBtnRef}
+          onClick={handleOpenBrushPicker}
           aria-label="Select Brush Type"
           style={{
             display: 'flex',
@@ -335,11 +426,11 @@ export const DrawMode: React.FC = () => {
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               transition={{ duration: 0.1 }}
               style={{
-                position: 'absolute',
-                bottom: '120%',
-                left: '50%',
+                position: 'fixed',
+                bottom: `${brushCoords.bottom + 12}px`,
+                left: `${brushCoords.left}px`,
                 transform: 'translateX(-50%)',
-                zIndex: 100,
+                zIndex: 250,
                 backgroundColor: 'var(--surface)',
                 border: '3px solid var(--ink)',
                 boxShadow: '4px 4px 0 var(--ink)',
@@ -382,29 +473,162 @@ export const DrawMode: React.FC = () => {
       {/* Divider */}
       <div style={{ width: '2px', height: '24px', backgroundColor: 'var(--border)', flexShrink: 0 }} />
 
-      {/* Brush Sizes */}
-      <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexShrink: 0 }}>
-        {BRUSH_SIZES.map((b) => (
-          <button
-            key={b.label}
-            onClick={() => {
-              soundEngine.playUIClick();
-              setCurrentSize(b.radius);
-            }}
-            className="font-heading"
+      {/* Brush Size Picker with Popover */}
+      <div style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
+        <button
+          ref={sizeBtnRef}
+          onClick={handleOpenSizePicker}
+          aria-label="Select Brush Size"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            padding: '0.4rem 0.6rem',
+            backgroundColor: 'var(--surface)',
+            border: '2px solid var(--ink)',
+            boxShadow: '2px 2px 0 var(--ink)',
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          <span className="font-heading" style={{ fontSize: '0.65rem', color: 'var(--ink)' }}>
+            SIZE: {BRUSH_SIZES.find(b => b.radius === currentSize)?.label}
+          </span>
+        </button>
+
+        {sizePickerBackdrop}
+
+        <AnimatePresence>
+          {isSizePickerOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              transition={{ duration: 0.1 }}
+              style={{
+                position: 'fixed',
+                bottom: `${sizeCoords.bottom + 12}px`,
+                left: `${sizeCoords.left}px`,
+                transform: 'translateX(-50%)',
+                zIndex: 250,
+                backgroundColor: 'var(--surface)',
+                border: '3px solid var(--ink)',
+                boxShadow: '4px 4px 0 var(--ink)',
+                padding: '0.5rem',
+                width: '180px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.3rem',
+              }}
+            >
+              {BRUSH_SIZES.map((b) => (
+                <button
+                  key={b.label}
+                  onClick={() => {
+                    soundEngine.playUIClick();
+                    setCurrentSize(b.radius);
+                    setIsSizePickerOpen(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.5rem 0.6rem',
+                    backgroundColor: currentSize === b.radius ? 'var(--ink)' : 'var(--surface)',
+                    color: currentSize === b.radius ? '#FFFFFF' : 'var(--ink)',
+                    border: '2px solid var(--ink)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span className="font-heading" style={{ fontSize: '0.7rem' }}>Lvl {b.label}</span>
+                  <span style={{ fontSize: '0.55rem', opacity: 0.7, fontFamily: 'var(--font-body)' }}>{b.name}</span>
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Divider */}
+      <div style={{ width: '2px', height: '24px', backgroundColor: 'var(--border)', flexShrink: 0 }} />
+
+      {/* Canvas Background Color Selector */}
+      <div style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
+        <button
+          ref={bgBtnRef}
+          onClick={handleOpenBgPicker}
+          aria-label="Select Canvas Background"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            padding: '0.4rem 0.6rem',
+            backgroundColor: 'var(--surface)',
+            border: '2px solid var(--ink)',
+            boxShadow: '2px 2px 0 var(--ink)',
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          <div
             style={{
-              width: '32px',
-              height: '32px',
-              backgroundColor: currentSize === b.radius ? 'var(--ink)' : 'var(--surface)',
-              color: currentSize === b.radius ? '#FFFFFF' : 'var(--ink)',
-              border: '2px solid var(--ink)',
-              fontSize: '0.75rem',
-              cursor: 'pointer',
+              width: '12px',
+              height: '12px',
+              backgroundColor: canvasBgColor,
+              border: '1px solid var(--ink)',
             }}
-          >
-            {b.label}
-          </button>
-        ))}
+          />
+          <span className="font-heading" style={{ fontSize: '0.65rem', color: 'var(--ink)' }}>
+            BG
+          </span>
+        </button>
+
+        {bgPickerBackdrop}
+
+        <AnimatePresence>
+          {isBgPickerOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              transition={{ duration: 0.1 }}
+              style={{
+                position: 'fixed',
+                bottom: `${bgCoords.bottom + 12}px`,
+                left: `${bgCoords.left}px`,
+                transform: 'translateX(-50%)',
+                zIndex: 250,
+                backgroundColor: 'var(--surface)',
+                border: '3px solid var(--ink)',
+                boxShadow: '4px 4px 0 var(--ink)',
+                padding: '0.5rem',
+                width: '160px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '0.4rem',
+              }}
+            >
+              {BG_COLORS.map((bg) => (
+                <button
+                  key={bg.hex}
+                  onClick={() => {
+                    soundEngine.playUIClick();
+                    setCanvasBgColor(bg.hex);
+                    setIsBgPickerOpen(false);
+                  }}
+                  title={bg.label}
+                  aria-label={`Background ${bg.label}`}
+                  style={{
+                    aspectRatio: '1',
+                    backgroundColor: bg.hex,
+                    border: canvasBgColor === bg.hex ? '3px solid var(--accent)' : '2px solid var(--ink)',
+                    cursor: 'pointer',
+                  }}
+                />
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Divider */}
@@ -454,49 +678,121 @@ export const DrawMode: React.FC = () => {
     </>
   );
 
-  // --- Canvas element ---
-  const canvasElement = (
-    <canvas
-      ref={canvasRef}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-      style={{
-        display: 'block',
-        width: isFullscreen ? '100%' : 'min(90vw, 600px)',
-        height: isFullscreen ? '100%' : 'min(50vh, 360px)',
-        objectFit: 'contain',
+  // --- Unified Layout containing the Canvas node in same hierarchy to preserve context ---
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={isFullscreen ? {
+        position: 'fixed',
+        inset: 0,
+        zIndex: 200,
+        backgroundColor: '#000000',
+        display: 'flex',
+        flexDirection: 'column',
+      } : {
+        position: 'fixed',
+        inset: 0,
+        zIndex: 10,
+        backgroundColor: 'var(--bg)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '1rem',
       }}
-    />
-  );
-
-  // --- FULLSCREEN MODE ---
-  if (isFullscreen) {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 200,
-          backgroundColor: '#000000',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        {/* Canvas fills everything */}
+    >
+      {/* Top Header */}
+      {!isFullscreen && (
         <div
           style={{
-            flex: 1,
-            overflow: 'hidden',
-            cursor: 'crosshair',
-            touchAction: 'none',
+            width: '100%',
+            maxWidth: '800px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.5rem',
           }}
         >
-          {canvasElement}
-        </div>
+          <Button variant="secondary" onClick={() => setMode('select')} aria-label="Go Back" style={{ padding: '0.6rem 1rem' }}>
+            <ArrowLeft size={18} />
+            <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>{t('BACK')}</span>
+          </Button>
 
-        {/* Exit fullscreen button (always visible top-right) */}
+          <Wordmark size="sm" />
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              onClick={() => setIsFullscreen(true)}
+              aria-label="Fullscreen canvas"
+              style={{
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'var(--surface)',
+                border: '2px solid var(--ink)',
+                boxShadow: '2px 2px 0 var(--ink)',
+                cursor: 'pointer',
+                color: 'var(--ink)',
+              }}
+            >
+              <Maximize2 size={16} />
+            </button>
+            <MuteButton />
+          </div>
+        </div>
+      )}
+
+      {/* Main Drawing Canvas Board Wrapper */}
+      <div
+        style={isFullscreen ? {
+          flex: 1,
+          overflow: 'hidden',
+          cursor: 'crosshair',
+          touchAction: 'none',
+          backgroundColor: canvasBgColor,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        } : {
+          border: '4px solid var(--ink)',
+          boxShadow: '4px 4px 0 var(--ink)',
+          backgroundColor: canvasBgColor,
+          borderRadius: 0,
+          overflow: 'hidden',
+          cursor: 'crosshair',
+          touchAction: 'none',
+          width: 'min(90vw, 600px)',
+          aspectRatio: '3/2',
+        }}
+      >
+        <canvas
+          ref={canvasRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          style={isFullscreen ? {
+            display: 'block',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            aspectRatio: '3/2',
+            objectFit: 'contain',
+          } : {
+            display: 'block',
+            width: '100%',
+            height: '100%',
+          }}
+        />
+      </div>
+
+      {/* Exit fullscreen button (always visible top-right in fullscreen) */}
+      {isFullscreen && (
         <button
           onClick={() => setIsFullscreen(false)}
           aria-label="Exit fullscreen"
@@ -519,8 +815,10 @@ export const DrawMode: React.FC = () => {
         >
           <Minimize2 size={18} />
         </button>
+      )}
 
-        {/* Minimizable bottom toolbar */}
+      {/* Bottom Toolbar Area */}
+      {isFullscreen ? (
         <AnimatePresence>
           {!isToolbarMinimized ? (
             <motion.div
@@ -606,130 +904,54 @@ export const DrawMode: React.FC = () => {
             </motion.button>
           )}
         </AnimatePresence>
-      </div>
-    );
-  }
-
-  // --- NORMAL MODE ---
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 10,
-        backgroundColor: 'var(--bg)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '1rem',
-      }}
-    >
-      {/* Top Header */}
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '800px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.5rem',
-        }}
-      >
-        <Button variant="secondary" onClick={() => setMode('select')} aria-label="Go Back" style={{ padding: '0.6rem 1rem' }}>
-          <ArrowLeft size={18} />
-          <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>{t('BACK')}</span>
-        </Button>
-
-        <Wordmark size="sm" />
-
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <button
-            onClick={() => setIsFullscreen(true)}
-            aria-label="Fullscreen canvas"
-            style={{
-              width: '36px',
-              height: '36px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: 'var(--surface)',
-              border: '2px solid var(--ink)',
-              boxShadow: '2px 2px 0 var(--ink)',
-              cursor: 'pointer',
-              color: 'var(--ink)',
-            }}
-          >
-            <Maximize2 size={16} />
-          </button>
-          <MuteButton />
-        </div>
-      </div>
-
-      {/* Main Drawing Canvas Board (Black for Contrast) */}
-      <div
-        style={{
-          border: '4px solid var(--ink)',
-          boxShadow: '4px 4px 0 var(--ink)',
-          backgroundColor: '#000000',
-          borderRadius: 0,
-          overflow: 'hidden',
-          cursor: 'crosshair',
-          touchAction: 'none',
-          maxWidth: '100%',
-        }}
-      >
-        {canvasElement}
-      </div>
-
-      {/* Minimal Bottom Toolbar */}
-      <div
-        style={{
-          backgroundColor: 'var(--surface)',
-          border: '3px solid var(--ink)',
-          boxShadow: '4px 4px 0 var(--ink)',
-          padding: '0.5rem 0.75rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.75rem',
-          maxWidth: '800px',
-          width: '100%',
-        }}
-      >
-        {/* Left Scrollable Tools Area */}
+      ) : (
+        /* Minimal Bottom Toolbar (Normal Mode) */
         <div
           style={{
+            backgroundColor: 'var(--surface)',
+            border: '3px solid var(--ink)',
+            boxShadow: '4px 4px 0 var(--ink)',
+            padding: '0.5rem 0.75rem',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             gap: '0.75rem',
-            overflowX: 'auto',
-            scrollbarWidth: 'none',
-            flex: '1 1 auto',
-            paddingRight: '0.5rem',
+            maxWidth: '800px',
+            width: '100%',
           }}
         >
-          {toolbarControls}
-        </div>
+          {/* Left Scrollable Tools Area */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              overflowX: 'auto',
+              scrollbarWidth: 'none',
+              flex: '1 1 auto',
+              paddingRight: '0.5rem',
+            }}
+          >
+            {toolbarControls}
+          </div>
 
-        {/* Right Primary Action */}
-        <Button
-          variant="primary"
-          onClick={handleConvert}
-          aria-label="Turn drawing into 3D cubes"
-          style={{
-            padding: '0.65rem 1.25rem',
-            fontSize: '0.8rem',
-            flexShrink: 0,
-          }}
-        >
-          <Box size={16} />
-          <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>CUBES</span>
-        </Button>
-      </div>
+          {/* Right Primary Action */}
+          <Button
+            variant="primary"
+            onClick={handleConvert}
+            aria-label="Turn drawing into 3D cubes"
+            style={{
+              padding: '0.65rem 1.25rem',
+              fontSize: '0.8rem',
+              flexShrink: 0,
+            }}
+          >
+            <Box size={16} />
+            <span className="btn-text-responsive" style={{ marginLeft: '0.25rem' }}>CUBES</span>
+          </Button>
+        </div>
+      )}
     </motion.div>
   );
 };
+

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { createAccount, getAccountByUsername, associateDeviceWithAccount, migrateDeviceDataToAccount } from '@/lib/db';
+import { createAccount, getAccountByUsername, getAccountByEmail, associateDeviceWithAccount, migrateDeviceDataToAccount, isAdminEmail, verifyAdminSpecialCode } from '@/lib/db';
 import { rateLimit } from '@/lib/ratelimit';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { username, pin } = body;
+    const { username, pin, email, specialCode } = body;
     const deviceId = req.headers.get('x-device-id');
 
     if (!deviceId) {
@@ -26,6 +26,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Username can only contain letters, numbers, and underscores.' }, { status: 400 });
     }
 
+    // Validate email if provided
+    const cleanEmail = email ? email.toLowerCase().trim() : null;
+    if (cleanEmail) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return NextResponse.json({ error: 'Invalid email address.' }, { status: 400 });
+      }
+      // Admin email gating
+      if (isAdminEmail(cleanEmail)) {
+        if (!specialCode || !verifyAdminSpecialCode(specialCode)) {
+          return NextResponse.json({
+            error: 'This email is reserved for admin accounts. Please provide the special code to register.',
+            requiresSpecialCode: true,
+          }, { status: 403 });
+        }
+      }
+      // Check if email already used
+      const emailTaken = await getAccountByEmail(cleanEmail);
+      if (emailTaken) {
+        return NextResponse.json({ error: 'This email is already associated with an account.' }, { status: 409 });
+      }
+    }
+
     // IP rate limit signup
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
     const signupLimit = await rateLimit(`signup_ip:${ip}`);
@@ -33,7 +55,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Too many registration requests. Please try again later.' }, { status: 429 });
     }
 
-    // Check if account already exists
+    // Check if username already exists
     const existing = await getAccountByUsername(cleanUsername);
     if (existing) {
       return NextResponse.json({ error: 'Username is already taken.' }, { status: 409 });
@@ -42,8 +64,8 @@ export async function POST(req: NextRequest) {
     // Hash PIN
     const pinHash = await bcrypt.hash(pin, 10);
 
-    // Create account
-    await createAccount(cleanUsername, pinHash);
+    // Create account (with optional email)
+    await createAccount(cleanUsername, pinHash, cleanEmail);
 
     // Migrate creations and streak
     await migrateDeviceDataToAccount(deviceId, cleanUsername);
@@ -51,7 +73,9 @@ export async function POST(req: NextRequest) {
     // Login (associate device session)
     await associateDeviceWithAccount(deviceId, cleanUsername);
 
-    return NextResponse.json({ success: true, username: cleanUsername });
+    const adminFlag = cleanEmail ? isAdminEmail(cleanEmail) : false;
+
+    return NextResponse.json({ success: true, username: cleanUsername, isAdmin: adminFlag });
   } catch (err: any) {
     console.error('Signup error:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

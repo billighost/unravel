@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Volume2, VolumeX, Gauge, Flame, Sparkles, Images, Plus, Check, User } from 'lucide-react';
+import { Menu, X, Volume2, VolumeX, Gauge, Flame, Sparkles, Images, Plus, Check, User, ShieldCheck } from 'lucide-react';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { qualityTierManager, QualityTier } from '@/lib/qualityTier';
 import { getDeviceId } from '@/lib/deviceId';
@@ -41,7 +41,9 @@ export const AppMenu: React.FC<AppMenuProps> = ({
   // Account modal states
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const username = useAppStore((state) => state.username);
+  const isAdmin = useAppStore((state) => state.isAdmin);
   const setStoreUsername = useAppStore((state) => state.setUsername);
+  const setIsAdmin = useAppStore((state) => state.setIsAdmin);
 
   // Check mobile width & sync mute/performance
   useEffect(() => {
@@ -87,6 +89,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
         const data = await res.json();
         if (data.loggedIn) {
           setStoreUsername(data.username);
+          setIsAdmin(!!data.isAdmin);
         }
       } catch (err) {
         console.error('Failed to restore account session in menu:', err);
@@ -246,6 +249,34 @@ export const AppMenu: React.FC<AppMenuProps> = ({
             {username ? `ACCOUNT: ${username.toUpperCase()}` : 'SAVE YOUR PROGRESS'}
           </span>
         </button>
+
+        {/* Admin Dashboard Link — only for admins */}
+        {isAdmin && (
+          <Link
+            href="/admin"
+            onClick={() => setIsOpen(false)}
+            style={{ textDecoration: 'none' }}
+          >
+            <button
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                width: '100%',
+                padding: '0.65rem 0.85rem',
+                backgroundColor: '#1A1A1A',
+                border: '2px solid var(--accent)',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <ShieldCheck size={18} color="var(--accent)" />
+              <span className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--accent)' }}>
+                ADMIN DASHBOARD
+              </span>
+            </button>
+          </Link>
+        )}
 
         {/* Today's Challenge */}
         <button

@@ -10,8 +10,8 @@
   --text-secondary: #6B6B66;
   --border: #E4E2DA;
   
-  --font-logo: 'Press Start 2P', cursive, monospace;
-  --font-heading: 'Pixelify Sans', 'Press Start 2P', cursive, sans-serif;
+  --font-logo: 'Press Start 2P', system-ui, -apple-system, monospace;
+  --font-heading: 'Pixelify Sans', 'Press Start 2P', system-ui, -apple-system, sans-serif;
   --font-body: 'Space Mono', monospace;
 
   --shadow-chunky: 4px 4px 0 var(--ink);

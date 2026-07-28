@@ -73,11 +73,12 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
         backgroundColor: 'var(--surface)',
         borderTop: '4px solid var(--ink)',
         boxShadow: '0 -4px 16px rgba(0,0,0,0.15)',
-        padding: '0.75rem 0.5rem calc(0.75rem + env(safe-area-inset-bottom)) 0.5rem',
+        // Responsive padding — safe area + clamp so it works at 250px+
+        padding: 'clamp(0.4rem, 1.5vw, 0.75rem) clamp(0.25rem, 1.5vw, 0.5rem) calc(clamp(0.4rem, 1.5vw, 0.75rem) + env(safe-area-inset-bottom)) clamp(0.25rem, 1.5vw, 0.5rem)',
         zIndex: 9999,
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.4rem',
+        gap: 'clamp(0.2rem, 0.8vw, 0.4rem)',
         userSelect: 'none',
         pointerEvents: 'auto',
       }}
@@ -88,24 +89,24 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
           style={{
             display: 'flex',
             justifyContent: 'center',
-            gap: '0.3rem',
+            gap: 'clamp(0.12rem, 0.6vw, 0.3rem)',
             width: '100%',
           }}
         >
           {row.map((key) => {
             const isSpecial = ['SHIFT', 'BACKSPACE', 'SPACE', 'DONE', 'RETURN'].includes(key);
             let displayKey = key;
-            let icon = null;
+            let icon: React.ReactNode = null;
 
             if (key === 'SHIFT') {
               displayKey = '';
-              icon = <ArrowUp size={16} color={isShift ? 'var(--accent)' : 'var(--ink)'} strokeWidth={3} />;
+              icon = <ArrowUp size={14} color={isShift ? 'var(--accent)' : 'var(--ink)'} strokeWidth={3} />;
             } else if (key === 'BACKSPACE') {
               displayKey = '';
-              icon = <Delete size={16} />;
+              icon = <Delete size={14} />;
             } else if (key === 'DONE') {
               displayKey = 'DONE';
-              icon = <CornerDownLeft size={14} style={{ marginLeft: '2px' }} />;
+              icon = <CornerDownLeft size={12} style={{ marginLeft: '2px' }} />;
             } else if (key === 'RETURN') {
               displayKey = '⏎';
               icon = null;
@@ -117,25 +118,24 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
 
             // Key layout styles
             let flex = '1';
-            let maxWidth = '40px';
+            let maxWidth = 'min(40px, 9vw)';
             let bg = 'var(--bg)';
             let color = 'var(--ink)';
 
             if (key === 'SPACE') {
               flex = '3';
-              maxWidth = '180px';
-              bg = 'var(--bg)';
+              maxWidth = 'min(180px, 40vw)';
             } else if (key === 'DONE') {
               flex = '1.5';
-              maxWidth = '80px';
+              maxWidth = 'min(72px, 16vw)';
               bg = 'var(--accent)';
               color = '#FFFFFF';
             } else if (key === 'SHIFT' || key === 'BACKSPACE') {
               flex = '1.5';
-              maxWidth = '70px';
+              maxWidth = 'min(64px, 14vw)';
             } else if (key === 'RETURN') {
               flex = '1';
-              maxWidth = '40px';
+              maxWidth = 'min(40px, 9vw)';
               bg = 'var(--ink)';
               color = '#FFFFFF';
             }
@@ -154,7 +154,8 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                 style={{
                   flex,
                   maxWidth,
-                  height: '42px',
+                  // Responsive height: works from 250px screen width up
+                  height: 'clamp(30px, 8.5vw, 42px)',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -163,13 +164,15 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                   border: '2px solid var(--ink)',
                   boxShadow: '2px 2px 0 var(--ink)',
                   fontFamily: 'var(--font-heading)',
-                  fontSize: 'min(0.95rem, 4vw)',
+                  // Responsive font size: readable at 250px, normal at 400px+
+                  fontSize: 'clamp(0.55rem, 3vw, 0.9rem)',
                   fontWeight: 'bold',
                   cursor: 'pointer',
                   borderRadius: 0,
                   outline: 'none',
                   touchAction: 'manipulation',
                   padding: 0,
+                  minWidth: 0,
                 }}
               >
                 {icon ? icon : displayKey}

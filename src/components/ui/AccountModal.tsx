@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, Key, Check, AlertTriangle, LogOut } from 'lucide-react';
+import { X, User, Key, Check, AlertTriangle, LogOut, Flame, Mail, ShieldCheck } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { getDeviceId } from '@/lib/deviceId';
 import { soundEngine } from '@/lib/audio/soundEngine';
@@ -18,24 +18,36 @@ interface AccountModalProps {
   onClose: () => void;
 }
 
+const ADMIN_EMAILS = ['bb2010ng@gmail.com', 'devdrill.dev@gmail.com'];
+
 export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) => {
   const currentUsername = useAppStore((state) => state.username);
   const setStoreUsername = useAppStore((state) => state.setUsername);
+  const setIsAdmin = useAppStore((state) => state.setIsAdmin);
 
   const [mode, setMode] = useState<'login' | 'signup'>('signup');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [specialCode, setSpecialCode] = useState('');
+  const [showSpecialCode, setShowSpecialCode] = useState(false);
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  // Streak data for logged-in view
+  const [streakData, setStreakData] = useState<{ current_streak: number; longest_streak: number } | null>(null);
+  const [streakLoading, setStreakLoading] = useState(false);
+
   // Virtual keyboard touch device detection
   const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const [activeField, setActiveField] = useState<'username' | 'pin' | 'confirmPin' | null>(null);
+  const [activeField, setActiveField] = useState<'username' | 'email' | 'specialCode' | 'pin' | 'confirmPin' | null>(null);
 
   // Refs for underlying hidden inputs to maintain focus & cursor behavior
   const usernameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const specialCodeRef = useRef<HTMLInputElement>(null);
   const pinRef = useRef<HTMLInputElement>(null);
   const confirmPinRef = useRef<HTMLInputElement>(null);
 
@@ -50,17 +62,48 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     setIsTouchDevice(detectTouch());
   }, []);
 
+  // Load streak when modal opens for logged-in user
+  useEffect(() => {
+    if (isOpen && currentUsername) {
+      setStreakLoading(true);
+      const deviceId = getDeviceId();
+      fetch('/api/daily-challenge', { headers: { 'x-device-id': deviceId } })
+        .then(r => r.json())
+        .then(data => {
+          if (data.streak) {
+            setStreakData({
+              current_streak: data.streak.current_streak || 0,
+              longest_streak: data.streak.longest_streak || 0,
+            });
+          }
+        })
+        .catch(() => {})
+        .finally(() => setStreakLoading(false));
+    }
+  }, [isOpen, currentUsername]);
+
   useEffect(() => {
     if (isOpen) {
       setError(null);
       setIsSuccess(false);
       setIsLoading(false);
       setUsername('');
+      setEmail('');
+      setSpecialCode('');
+      setShowSpecialCode(false);
       setPin('');
       setConfirmPin('');
       setActiveField(null);
     }
   }, [isOpen, mode]);
+
+  // Detect if typed email is an admin email to show special code field
+  useEffect(() => {
+    if (mode === 'signup') {
+      const isAdminMail = ADMIN_EMAILS.includes(email.toLowerCase().trim());
+      setShowSpecialCode(isAdminMail && email.trim().length > 0);
+    }
+  }, [email, mode]);
 
   if (!isOpen) return null;
 
@@ -87,6 +130,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       });
       if (res.ok) {
         setStoreUsername(null);
+        setIsAdmin(false);
         showToast('Logged out successfully', 'success');
         announceToScreenReader('Logged out successfully');
         onClose();
@@ -123,11 +167,28 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       return;
     }
 
+    // Client-side admin email gate check
+    if (mode === 'signup' && email.trim() && ADMIN_EMAILS.includes(email.toLowerCase().trim())) {
+      if (!specialCode.trim()) {
+        setError('This email requires a special code. Please enter it below.');
+        return;
+      }
+    }
+
     setIsLoading(true);
 
     try {
       const deviceId = getDeviceId();
       const url = mode === 'signup' ? '/api/accounts/signup' : '/api/accounts/login';
+
+      const body: Record<string, string> = {
+        username: username.trim(),
+        pin,
+      };
+      if (mode === 'signup' && email.trim()) {
+        body.email = email.trim();
+        if (specialCode.trim()) body.specialCode = specialCode.trim();
+      }
 
       const res = await fetch(url, {
         method: 'POST',
@@ -135,10 +196,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           'Content-Type': 'application/json',
           'x-device-id': deviceId,
         },
-        body: JSON.stringify({
-          username: username.trim(),
-          pin,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -147,7 +205,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         setIsSuccess(true);
         soundEngine.playSuccessChime();
         setStoreUsername(data.username);
-        showToast(mode === 'signup' ? 'Account created! Progress saved.' : 'Logged in successfully!', 'success');
+        if (data.isAdmin) {
+          setIsAdmin(true);
+          showToast('Admin access granted! Welcome.', 'success');
+        } else {
+          showToast(mode === 'signup' ? 'Account created! Progress saved.' : 'Logged in successfully!', 'success');
+        }
         announceToScreenReader(mode === 'signup' ? 'Account created' : 'Logged in');
         
         // Invalidate API caches for creations & gallery so they reload for the logged-in user
@@ -169,6 +232,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           onClose();
         }, 1500);
       } else {
+        if (data.requiresSpecialCode) {
+          setShowSpecialCode(true);
+          showToast('This email is reserved. Enter the special code to register.', 'error');
+        }
         setError(data.error || 'Request failed.');
       }
     } catch (err) {
@@ -234,6 +301,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     );
   };
 
+  // Keyboard extras padding
+  const keyboardPadding = activeField ? '260px' : '1.5rem';
+
   return (
     <AnimatePresence>
       <div
@@ -268,7 +338,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
             position: 'relative',
             maxHeight: '90vh',
             overflowY: 'auto',
-            paddingBottom: activeField ? '240px' : '1.5rem', // Make room for virtual keyboard
+            paddingBottom: keyboardPadding,
             transition: 'padding-bottom 0.2s ease',
           }}
         >
@@ -290,7 +360,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           </button>
 
           {currentUsername ? (
-            /* Logged In View */
+            /* ── Logged In View ─────────────────────────────────────── */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center', padding: '0.5rem 0' }}>
               <div style={{ width: '48px', height: '48px', border: '3px solid var(--ink)', boxShadow: '3px 3px 0 var(--ink)', backgroundColor: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
                 <User size={24} />
@@ -305,6 +375,67 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                 <div className="font-heading" style={{ fontSize: '1.15rem', color: 'var(--accent)', marginTop: '0.85rem', wordBreak: 'break-all' }}>
                   {currentUsername}
                 </div>
+              </div>
+
+              {/* Streak Counter */}
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+                {streakLoading ? (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Loading streak...</div>
+                ) : streakData ? (
+                  <>
+                    {/* Current Streak */}
+                    <div style={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      padding: '0.75rem 0.5rem',
+                      backgroundColor: streakData.current_streak > 0 ? 'rgba(255, 59, 48, 0.08)' : 'var(--bg)',
+                      border: `2px solid ${streakData.current_streak > 0 ? 'var(--accent)' : 'var(--border)'}`,
+                    }}>
+                      <Flame size={22} fill={streakData.current_streak > 0 ? 'var(--accent)' : 'var(--border)'} color={streakData.current_streak > 0 ? 'var(--accent)' : 'var(--border)'} />
+                      <span className="font-heading" style={{ fontSize: '1.4rem', color: streakData.current_streak > 0 ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                        {streakData.current_streak}
+                      </span>
+                      <span style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)' }}>
+                        CURRENT STREAK
+                      </span>
+                    </div>
+                    {/* Longest Streak */}
+                    <div style={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      padding: '0.75rem 0.5rem',
+                      backgroundColor: 'var(--bg)',
+                      border: '2px solid var(--border)',
+                    }}>
+                      <Flame size={22} fill="var(--border)" color="var(--border)" />
+                      <span className="font-heading" style={{ fontSize: '1.4rem', color: 'var(--ink)' }}>
+                        {streakData.longest_streak}
+                      </span>
+                      <span style={{ fontSize: '0.65rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)' }}>
+                        LONGEST STREAK
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    backgroundColor: 'var(--bg)',
+                    border: '2px solid var(--border)',
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    textAlign: 'center',
+                    fontFamily: 'var(--font-body)',
+                  }}>
+                    Complete today's picture to start your streak! 🔥
+                  </div>
+                )}
               </div>
 
               {error && (
@@ -332,7 +463,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
               </Button>
             </div>
           ) : (
-            /* Sign Up / Login Forms */
+            /* ── Sign Up / Login Forms ──────────────────────────────── */
             <>
               <div style={{ textAlign: 'center', padding: '0 0.5rem' }}>
                 <h2 className="font-heading" style={{ fontSize: 'min(1.1rem, 5vw)', color: 'var(--ink)' }}>
@@ -384,6 +515,81 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     />
                   </div>
                 </div>
+
+                {/* Email (signup only) */}
+                {mode === 'signup' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                    <label className="font-heading" style={{ fontSize: '0.75rem', color: 'var(--ink)' }}>
+                      EMAIL <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', fontSize: '0.65rem' }}>(OPTIONAL)</span>
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>
+                        <Mail size={16} />
+                      </span>
+                      <input
+                        ref={emailRef}
+                        type="email"
+                        placeholder="your@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        onFocus={() => setActiveField('email')}
+                        inputMode={isTouchDevice ? 'none' : 'email'}
+                        readOnly={isTouchDevice}
+                        style={{
+                          width: '100%',
+                          padding: '0.65rem 0.75rem 0.65rem 2.25rem',
+                          backgroundColor: 'var(--bg)',
+                          border: '3px solid var(--ink)',
+                          boxShadow: '2px 2px 0 var(--ink)',
+                          fontFamily: 'var(--font-body)',
+                          fontSize: '0.8rem',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+
+                    {/* Special code field — shown when admin email detected */}
+                    {showSpecialCode && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.4rem' }}
+                      >
+                        <label className="font-heading" style={{ fontSize: '0.75rem', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <ShieldCheck size={13} /> SPECIAL CODE
+                        </label>
+                        <input
+                          ref={specialCodeRef}
+                          type="text"
+                          placeholder="Enter special access code"
+                          value={specialCode}
+                          onChange={(e) => setSpecialCode(e.target.value)}
+                          onFocus={() => setActiveField('specialCode')}
+                          inputMode={isTouchDevice ? 'none' : 'text'}
+                          readOnly={isTouchDevice}
+                          style={{
+                            width: '100%',
+                            padding: '0.65rem 0.75rem',
+                            backgroundColor: 'rgba(255,59,48,0.05)',
+                            border: '2px solid var(--accent)',
+                            fontFamily: 'var(--font-body)',
+                            fontSize: '0.8rem',
+                            outline: 'none',
+                            letterSpacing: '0.15em',
+                          }}
+                        />
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* Login: show email OR username hint */}
+                {mode === 'login' && (
+                  <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '-0.5rem' }}>
+                    You can log in with your username or email.
+                  </p>
+                )}
 
                 {/* PIN (Hidden input with visual slots) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', position: 'relative' }}>
@@ -471,13 +677,15 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       {/* Render touch virtual keyboard/keypad */}
       {isTouchDevice && activeField && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10000 }}>
-          {activeField === 'username' ? (
+          {(activeField === 'username' || activeField === 'email' || activeField === 'specialCode') ? (
             <CustomKeyboard
-              value={username}
-              onChange={setUsername}
+              value={activeField === 'username' ? username : activeField === 'email' ? email : specialCode}
+              onChange={activeField === 'username' ? setUsername : activeField === 'email' ? setEmail : setSpecialCode}
               onDone={() => {
                 setActiveField(null);
-                if (usernameRef.current) usernameRef.current.blur();
+                usernameRef.current?.blur();
+                emailRef.current?.blur();
+                specialCodeRef.current?.blur();
               }}
             />
           ) : (
@@ -486,8 +694,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
               onChange={activeField === 'pin' ? setPin : setConfirmPin}
               onDone={() => {
                 setActiveField(null);
-                if (pinRef.current) pinRef.current.blur();
-                if (confirmPinRef.current) confirmPinRef.current.blur();
+                pinRef.current?.blur();
+                confirmPinRef.current?.blur();
               }}
             />
           )}

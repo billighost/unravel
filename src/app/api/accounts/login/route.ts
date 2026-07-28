@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getAccountByUsername, associateDeviceWithAccount } from '@/lib/db';
+import { getAccountByUsernameOrEmail, associateDeviceWithAccount, isAdminEmail, verifyAdminSpecialCode } from '@/lib/db';
 import { getCache, setCache, invalidateCache } from '@/lib/cache';
 import { rateLimit } from '@/lib/ratelimit';
 
@@ -9,18 +9,20 @@ export const runtime = 'edge';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { username, pin } = body;
+    // Accept `username` OR `email` as the login identifier
+    const identifier = (body.username || body.email || '').trim();
+    const { pin } = body;
     const deviceId = req.headers.get('x-device-id');
 
     if (!deviceId) {
       return NextResponse.json({ error: 'Missing device ID header' }, { status: 400 });
     }
 
-    if (!username || !pin) {
-      return NextResponse.json({ error: 'Username and PIN are required.' }, { status: 400 });
+    if (!identifier || !pin) {
+      return NextResponse.json({ error: 'Username/email and PIN are required.' }, { status: 400 });
     }
 
-    const cleanUsername = username.toLowerCase().trim();
+    const cleanIdentifier = identifier.toLowerCase();
 
     // 1. IP Rate Limiting (Second Layer)
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
@@ -30,8 +32,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Lockout Check
-    const failedKey = `failed_logins:${cleanUsername}`;
-    const lockoutKey = `lockout:${cleanUsername}`;
+    const failedKey = `failed_logins:${cleanIdentifier}`;
+    const lockoutKey = `lockout:${cleanIdentifier}`;
     const failedAttempts = await getCache<number>(failedKey) || 0;
 
     if (failedAttempts >= 5) {
@@ -44,17 +46,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Get Account
-    const account = await getAccountByUsername(cleanUsername);
+    // Get Account — by username OR email
+    const account = await getAccountByUsernameOrEmail(cleanIdentifier);
     if (!account) {
-      // Return general incorrect message to prevent username enumeration, but increment failed attempts for the input username
-      return handleFailedLogin(cleanUsername, failedAttempts, failedKey, lockoutKey);
+      return handleFailedLogin(cleanIdentifier, failedAttempts, failedKey, lockoutKey);
     }
 
     // Compare PIN
     const match = await bcrypt.compare(pin, account.pin_hash);
     if (!match) {
-      return handleFailedLogin(cleanUsername, failedAttempts, failedKey, lockoutKey);
+      return handleFailedLogin(cleanIdentifier, failedAttempts, failedKey, lockoutKey);
     }
 
     // Success! Clear limits and invalidate session cache
@@ -63,18 +64,21 @@ export async function POST(req: NextRequest) {
       invalidateCache(lockoutKey),
     ]);
 
-    // Login (associate device session) and update session cache
-    await associateDeviceWithAccount(deviceId, cleanUsername);
-    setCache(`session:${deviceId}`, cleanUsername, 300).catch(() => {}); // Warm session cache
+    // Determine if admin
+    const adminFlag = account.email ? isAdminEmail(account.email) : false;
 
-    return NextResponse.json({ success: true, username: cleanUsername });
+    // Login (associate device session) and update session cache
+    await associateDeviceWithAccount(deviceId, account.username);
+    setCache(`session:${deviceId}`, account.username, 300).catch(() => {}); // Warm session cache
+
+    return NextResponse.json({ success: true, username: account.username, isAdmin: adminFlag });
   } catch (err: any) {
     console.error('Login error:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
-async function handleFailedLogin(username: string, failedAttempts: number, failedKey: string, lockoutKey: string) {
+async function handleFailedLogin(identifier: string, failedAttempts: number, failedKey: string, lockoutKey: string) {
   const newFailedAttempts = failedAttempts + 1;
   await setCache(failedKey, newFailedAttempts, 86400); // 24 hours retention
 

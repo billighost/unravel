@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Flag, Eye, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Flag, Eye, AlertTriangle, RefreshCw, Lock, Globe } from 'lucide-react';
 import { BrandIcon } from '@/components/ui/BrandIcon';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { Wordmark } from '@/components/ui/Wordmark';
@@ -22,6 +22,7 @@ interface CreationItem {
   created_at: string;
   report_count: number;
   view_count?: number;
+  is_public?: boolean;
 }
 
 export default function GalleryPage() {
@@ -32,6 +33,7 @@ export default function GalleryPage() {
   const [reportingMap, setReportingMap] = useState<Record<string, boolean>>({});
   const [confirmingReportId, setConfirmingReportId] = useState<string | null>(null);
   const [thumbnailSize, setThumbnailSize] = useState({ width: 320, height: 240 });
+  const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
 
   useEffect(() => {
     const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 3) : 1;
@@ -41,15 +43,24 @@ export default function GalleryPage() {
     });
   }, []);
 
-  const loadGallery = async () => {
+  const loadGallery = async (tab = activeTab) => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/gallery?limit=36');
+      const deviceId = getDeviceId();
+      const url = tab === 'my' 
+        ? `/api/gallery?limit=36&filter=my` 
+        : `/api/gallery?limit=36`;
+
+      const res = await fetch(url, {
+        headers: {
+          'x-device-id': deviceId,
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
-        announceToScreenReader('Community gallery loaded');
+        announceToScreenReader(tab === 'my' ? 'Your creations loaded' : 'Community gallery loaded');
       } else {
         setError("Couldn't load gallery items right now.");
         showToast("Couldn't load gallery — try again later", 'error');
@@ -64,13 +75,13 @@ export default function GalleryPage() {
   };
 
   useEffect(() => {
-    loadGallery();
+    loadGallery(activeTab);
 
     const handleSWMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'API_CACHE_UPDATED') {
         try {
           const url = new URL(event.data.url, window.location.origin);
-          if (url.pathname.startsWith('/api/gallery')) {
+          if (url.pathname.startsWith('/api/gallery') && activeTab !== 'my') {
             const freshItems = event.data.data.items || [];
             setItems(freshItems);
           }
@@ -89,7 +100,7 @@ export default function GalleryPage() {
         navigator.serviceWorker.removeEventListener('message', handleSWMessage);
       }
     };
-  }, []);
+  }, [activeTab]);
 
   const handleReport = async (id: string, e?: React.MouseEvent) => {
     if (e) {
@@ -148,7 +159,7 @@ export default function GalleryPage() {
       setReportedMap((prev) => ({ ...prev, [id]: true }));
     } catch (err) {
       console.error('Failed to report creation:', err);
-      loadGallery();
+      loadGallery(activeTab);
       showToast("Report failed to send — check your connection", 'error');
     } finally {
       setReportingMap((prev) => {
@@ -180,9 +191,52 @@ export default function GalleryPage() {
           </div>
 
           <h1 className="font-heading" style={{ fontSize: 'min(1.1rem, 5vw)', wordBreak: 'break-word', margin: 0 }}>
-            PUBLIC GALLERY
+            {activeTab === 'my' ? 'MY CREATIONS' : 'PUBLIC GALLERY'}
           </h1>
         </div>
+
+        {/* Minimal Tab Buttons */}
+        <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid var(--border)', paddingBottom: '0.5rem' }}>
+          <button
+            onClick={() => {
+              soundEngine.playUIClick();
+              setActiveTab('all');
+            }}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.8rem',
+              fontFamily: 'var(--font-heading)',
+              backgroundColor: activeTab === 'all' ? 'var(--ink)' : 'transparent',
+              color: activeTab === 'all' ? '#FFF' : 'var(--ink)',
+              border: '2px solid var(--ink)',
+              boxShadow: activeTab === 'all' ? 'none' : '2px 2px 0 var(--ink)',
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+            }}
+          >
+            ALL
+          </button>
+          <button
+            onClick={() => {
+              soundEngine.playUIClick();
+              setActiveTab('my');
+            }}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.8rem',
+              fontFamily: 'var(--font-heading)',
+              backgroundColor: activeTab === 'my' ? 'var(--ink)' : 'transparent',
+              color: activeTab === 'my' ? '#FFF' : 'var(--ink)',
+              border: '2px solid var(--ink)',
+              boxShadow: activeTab === 'my' ? 'none' : '2px 2px 0 var(--ink)',
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+            }}
+          >
+            MY CREATIONS
+          </button>
+        </div>
+
 
         {/* Gallery Grid States */}
         {loading ? (
@@ -195,16 +249,20 @@ export default function GalleryPage() {
             <AlertTriangle size={36} color="var(--accent)" />
             <h3 className="font-heading" style={{ fontSize: '1rem' }}>COULDN'T LOAD GALLERY</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', maxWidth: '400px' }}>{error}</p>
-            <Button variant="primary" onClick={loadGallery} style={{ marginTop: '0.5rem' }}>
+            <Button variant="primary" onClick={() => loadGallery(activeTab)} style={{ marginTop: '0.5rem' }}>
               <RefreshCw size={16} /> RETRY
             </Button>
           </div>
         ) : items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem', backgroundColor: 'var(--surface)', border: '4px solid var(--ink)', boxShadow: '4px 4px 0 var(--ink)' }}>
             <BrandIcon size={64} style={{ margin: '0 auto 1.25rem', opacity: 0.7 }} />
-            <h3 className="font-heading" style={{ fontSize: '1rem' }}>NO PUBLIC CREATIONS</h3>
+            <h3 className="font-heading" style={{ fontSize: '1rem' }}>
+              {activeTab === 'my' ? 'NO CREATIONS YET' : 'NO PUBLIC CREATIONS'}
+            </h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
-              Be the first to share your artwork to the public community gallery!
+              {activeTab === 'my' 
+                ? 'Create a masterpiece and share or challenge a friend to see it here!'
+                : 'Be the first to share your artwork to the public community gallery!'}
             </p>
             <Link href="/" style={{ marginTop: '1.25rem', display: 'inline-block' }}>
               <Button variant="primary">CREATE ARTWORK</Button>
@@ -249,11 +307,17 @@ export default function GalleryPage() {
                       {item.source_mode}
                     </div>
 
+                    {/* Privacy icon overlay (globe or lock) */}
+                    <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', backgroundColor: 'var(--ink)', color: '#FFF', padding: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
+                      {item.is_public ? <Globe size={11} /> : <Lock size={11} />}
+                    </div>
+
                     <div style={{ position: 'absolute', bottom: '0.5rem', right: '0.5rem', backgroundColor: 'var(--ink)', color: '#FFF', padding: '0.15rem 0.5rem', fontSize: '0.6rem', fontFamily: 'var(--font-heading)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <Eye size={10} /> {item.view_count || 0}
                     </div>
                   </div>
                 </Link>
+
 
                 {/* Footer Controls */}
                 <div style={{ padding: '0.65rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--surface)', gap: '0.5rem' }}>

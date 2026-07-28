@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPublicGallery } from '@/lib/db';
+import { getPublicGallery, getUserCreations } from '@/lib/db';
 import { Profiler } from '@/lib/profiler';
 import { getCache, setCache, getGalleryVersion } from '@/lib/cache';
 
@@ -13,6 +13,29 @@ export async function GET(req: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0', 10);
     const beforeDate = searchParams.get('before_date');
     const beforeId = searchParams.get('before_id');
+    const filter = searchParams.get('filter');
+    const deviceId = req.headers.get('x-device-id') || 'anonymous_device';
+
+    if (filter === 'my') {
+      profiler.start('db', 'Database Query My Creations');
+      const items = await getUserCreations(deviceId, limit, offset);
+      profiler.stop('db', 'Database Query My Creations');
+
+      profiler.stop('total', 'Total Request Time');
+      profiler.log('/api/gallery?filter=my');
+
+      const response = NextResponse.json({
+        success: true,
+        items,
+        count: items.length,
+      });
+
+      Object.entries(profiler.getHeaders()).forEach(([k, v]) => {
+        response.headers.set(k, v);
+      });
+      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      return response;
+    }
 
     profiler.start('cache', 'Cache Check');
     const version = await getGalleryVersion();
@@ -40,6 +63,7 @@ export async function GET(req: NextRequest) {
 
     profiler.start('db', 'Database Query');
     const items = await getPublicGallery(limit, offset, beforeDate, beforeId);
+
     profiler.stop('db', 'Database Query');
 
     profiler.start('cache_write', 'Cache Write');

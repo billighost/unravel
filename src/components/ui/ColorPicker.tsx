@@ -68,6 +68,8 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
 
   const satValRef = useRef<HTMLDivElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [triggerCoords, setTriggerCoords] = useState({ left: 0, bottom: 0 });
   const isDraggingSatVal = useRef(false);
   const isDraggingHue = useRef(false);
 
@@ -151,6 +153,13 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
 
   const toggleOpen = () => {
     soundEngine.playUIClick();
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setTriggerCoords({
+        left: rect.left + rect.width / 2,
+        bottom: window.innerHeight - rect.top,
+      });
+    }
     setIsOpen(!isOpen);
   };
 
@@ -163,6 +172,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
     <div style={{ position: 'relative', display: 'inline-block' }}>
       {/* Current Color Swatch Trigger Button */}
       <button
+        ref={buttonRef}
         onClick={toggleOpen}
         aria-label="Open Color Picker"
         style={{
@@ -197,7 +207,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
             {/* Backdrop click to close */}
             <div
               onClick={handleDismiss}
-              style={{ position: 'fixed', inset: 0, zIndex: 90 }}
+              style={{ position: 'fixed', inset: 0, zIndex: 240 }}
             />
 
             <motion.div
@@ -206,11 +216,11 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ currentColor, onChange
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               transition={{ duration: 0.12 }}
               style={{
-                position: 'absolute',
-                bottom: '120%',
-                left: '50%',
+                position: 'fixed',
+                bottom: `${triggerCoords.bottom + 12}px`,
+                left: `${triggerCoords.left}px`,
                 transform: 'translateX(-50%)',
-                zIndex: 100,
+                zIndex: 250,
                 backgroundColor: 'var(--surface)',
                 border: '4px solid var(--ink)',
                 boxShadow: '6px 6px 0 var(--ink)',

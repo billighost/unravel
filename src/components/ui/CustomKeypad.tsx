@@ -50,11 +50,12 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
         backgroundColor: 'var(--surface)',
         borderTop: '4px solid var(--ink)',
         boxShadow: '0 -4px 16px rgba(0,0,0,0.15)',
-        padding: '0.75rem 0.5rem calc(0.75rem + env(safe-area-inset-bottom)) 0.5rem',
+        // Responsive padding — safe area + clamp
+        padding: 'clamp(0.4rem, 1.5vw, 0.75rem) clamp(0.25rem, 2vw, 0.5rem) calc(clamp(0.4rem, 1.5vw, 0.75rem) + env(safe-area-inset-bottom)) clamp(0.25rem, 2vw, 0.5rem)',
         zIndex: 9999,
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.4rem',
+        gap: 'clamp(0.2rem, 0.8vw, 0.4rem)',
         userSelect: 'none',
         pointerEvents: 'auto',
         alignItems: 'center',
@@ -64,9 +65,10 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
         style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.4rem',
+          gap: 'clamp(0.2rem, 0.8vw, 0.4rem)',
+          // Responsive max width: fills screen at 250px, capped at 320px on larger
           width: '100%',
-          maxWidth: '320px',
+          maxWidth: 'min(320px, 90vw)',
         }}
       >
         {rows.map((row, rowIndex) => (
@@ -75,13 +77,13 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
             style={{
               display: 'flex',
               justifyContent: 'center',
-              gap: '0.4rem',
+              gap: 'clamp(0.2rem, 0.8vw, 0.4rem)',
               width: '100%',
             }}
           >
             {row.map((key) => {
               let displayKey = key;
-              let icon = null;
+              let icon: React.ReactNode = null;
               let bg = 'var(--bg)';
               let color = 'var(--ink)';
 
@@ -108,7 +110,8 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
                   }}
                   style={{
                     flex: '1',
-                    height: '52px',
+                    // Responsive height: scales down gracefully on small screens
+                    height: 'clamp(38px, 12vw, 56px)',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -117,13 +120,15 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
                     border: '2px solid var(--ink)',
                     boxShadow: '2px 2px 0 var(--ink)',
                     fontFamily: 'var(--font-heading)',
-                    fontSize: '1.2rem',
+                    // Responsive font: readable at 250px, normal at 400px+
+                    fontSize: 'clamp(0.85rem, 4.5vw, 1.25rem)',
                     fontWeight: 'bold',
                     cursor: 'pointer',
                     borderRadius: 0,
                     outline: 'none',
                     touchAction: 'manipulation',
                     padding: 0,
+                    minWidth: 0,
                   }}
                 >
                   {icon ? icon : displayKey}

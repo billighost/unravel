@@ -1,5 +1,17 @@
 import { neon, NeonQueryFunction } from '@neondatabase/serverless';
 
+// ─── Admin Config ─────────────────────────────────────────────────────────────
+const ADMIN_EMAILS = ['bb2010ng@gmail.com', 'devdrill.dev@gmail.com'];
+const ADMIN_SPECIAL_CODE = '081333';
+
+export function isAdminEmail(email: string): boolean {
+  return ADMIN_EMAILS.includes(email.toLowerCase().trim());
+}
+
+export function verifyAdminSpecialCode(code: string): boolean {
+  return code === ADMIN_SPECIAL_CODE;
+}
+
 // Interface definitions
 export interface CreationRecord {
   id: string;
@@ -35,6 +47,7 @@ export interface DeviceStreakRecord {
 export interface AccountRecord {
   username: string;
   pin_hash: string;
+  email?: string | null;
   created_at: string;
 }
 
@@ -42,6 +55,19 @@ export interface DeviceSessionRecord {
   device_id: string;
   username: string;
   associated_at: string;
+}
+
+export interface AdminAnalytics {
+  total_creations: number;
+  total_public: number;
+  total_hidden: number;
+  total_accounts: number;
+  total_challenge_completions: number;
+  total_views: number;
+  daily_activity: Array<{ date: string; creations_count: number; public_count: number; challenge_completions: number; new_accounts: number; views: number }>;
+  source_mode_stats: Array<{ source_mode: string; count: number }>;
+  top_streaks: Array<{ username: string | null; device_id: string; current_streak: number; longest_streak: number }>;
+  reported_creations: Array<CreationRecord>;
 }
 
 // In-Memory Fallback DB Store for development/offline environments without DATABASE_URL
@@ -53,6 +79,8 @@ class MemoryStore {
   reportCounter = 1;
   accounts = new Map<string, AccountRecord>(); // username (lowercase) -> record
   deviceSessions = new Map<string, string>(); // device_id -> username
+  analyticsCounters = new Map<string, number>();
+  dailyActivity = new Map<string, { date: string; creations_count: number; public_count: number; challenge_completions: number; new_accounts: number; views: number }>();
 
   constructor() {
     // Seed initial demo creation for daily challenge
@@ -92,6 +120,14 @@ class MemoryStore {
       creation_id: demoId,
       active_date: today,
     });
+
+    // Seed analytics counters
+    this.analyticsCounters.set('total_creations', 1);
+    this.analyticsCounters.set('total_public', 1);
+    this.analyticsCounters.set('total_hidden', 0);
+    this.analyticsCounters.set('total_accounts', 0);
+    this.analyticsCounters.set('total_challenge_completions', 0);
+    this.analyticsCounters.set('total_views', 0);
   }
 }
 
@@ -116,6 +152,69 @@ function getSql(): NeonQueryFunction<false, false> | null {
   }
 }
 
+// ─── Analytics Helpers ────────────────────────────────────────────────────────
+
+/** Increment a named analytics counter. Fire-and-forget — never throws. */
+export async function incrementCounter(key: string, delta = 1): Promise<void> {
+  const sql = getSql();
+  if (!sql) {
+    const cur = globalMemoryStore.analyticsCounters.get(key) || 0;
+    globalMemoryStore.analyticsCounters.set(key, cur + delta);
+    return;
+  }
+  try {
+    await sql`
+      INSERT INTO analytics_counters (key, value, updated_at)
+      VALUES (${key}, ${delta}, NOW())
+      ON CONFLICT (key) DO UPDATE
+        SET value = analytics_counters.value + ${delta},
+            updated_at = NOW()
+    `;
+  } catch (err) {
+    console.warn(`incrementCounter(${key}) failed:`, err);
+  }
+}
+
+/** Increment a daily activity metric. Fire-and-forget — never throws. */
+export async function incrementDailyActivity(field: 'creations_count' | 'public_count' | 'challenge_completions' | 'new_accounts' | 'views', delta = 1): Promise<void> {
+  const sql = getSql();
+  const today = new Date().toISOString().split('T')[0];
+
+  if (!sql) {
+    const existing = globalMemoryStore.dailyActivity.get(today) || {
+      date: today, creations_count: 0, public_count: 0, challenge_completions: 0, new_accounts: 0, views: 0,
+    };
+    (existing as any)[field] += delta;
+    globalMemoryStore.dailyActivity.set(today, existing);
+    return;
+  }
+  try {
+    await sql`
+      INSERT INTO daily_activity (date, ${sql.unsafe(field)})
+      VALUES (${today}, ${delta})
+      ON CONFLICT (date) DO UPDATE
+        SET ${sql.unsafe(field)} = daily_activity.${sql.unsafe(field)} + ${delta}
+    `;
+  } catch (err) {
+    // Fallback: safe upsert without dynamic column name
+    try {
+      if (field === 'creations_count') {
+        await sql`INSERT INTO daily_activity (date, creations_count) VALUES (${today}, ${delta}) ON CONFLICT (date) DO UPDATE SET creations_count = daily_activity.creations_count + ${delta}`;
+      } else if (field === 'public_count') {
+        await sql`INSERT INTO daily_activity (date, public_count) VALUES (${today}, ${delta}) ON CONFLICT (date) DO UPDATE SET public_count = daily_activity.public_count + ${delta}`;
+      } else if (field === 'challenge_completions') {
+        await sql`INSERT INTO daily_activity (date, challenge_completions) VALUES (${today}, ${delta}) ON CONFLICT (date) DO UPDATE SET challenge_completions = daily_activity.challenge_completions + ${delta}`;
+      } else if (field === 'new_accounts') {
+        await sql`INSERT INTO daily_activity (date, new_accounts) VALUES (${today}, ${delta}) ON CONFLICT (date) DO UPDATE SET new_accounts = daily_activity.new_accounts + ${delta}`;
+      } else if (field === 'views') {
+        await sql`INSERT INTO daily_activity (date, views) VALUES (${today}, ${delta}) ON CONFLICT (date) DO UPDATE SET views = daily_activity.views + ${delta}`;
+      }
+    } catch (e2) {
+      console.warn(`incrementDailyActivity(${field}) failed:`, e2);
+    }
+  }
+}
+
 // Creation Operations
 export async function createCreation(record: Omit<CreationRecord, 'created_at' | 'report_count' | 'is_hidden' | 'view_count'>): Promise<CreationRecord> {
   const sql = getSql();
@@ -133,6 +232,13 @@ export async function createCreation(record: Omit<CreationRecord, 'created_at' |
     // In-memory fallback: resolve username inline
     fullRecord.username = record.username || await getAssociatedUsername(record.device_id);
     globalMemoryStore.creations.set(fullRecord.id, fullRecord);
+    // Update counters
+    incrementCounter('total_creations').catch(() => {});
+    if (fullRecord.is_public) {
+      incrementCounter('total_public').catch(() => {});
+      incrementDailyActivity('public_count').catch(() => {});
+    }
+    incrementDailyActivity('creations_count').catch(() => {});
     return fullRecord;
   }
 
@@ -165,6 +271,19 @@ export async function createCreation(record: Omit<CreationRecord, 'created_at' |
   if (rows.length > 0 && rows[0].username) {
     fullRecord.username = rows[0].username;
   }
+
+  // Update analytics tables asynchronously — fire and forget
+  incrementCounter('total_creations').catch(() => {});
+  incrementDailyActivity('creations_count').catch(() => {});
+  if (fullRecord.is_public) {
+    incrementCounter('total_public').catch(() => {});
+    incrementDailyActivity('public_count').catch(() => {});
+  }
+  // Update source mode stats
+  sql`
+    INSERT INTO source_mode_stats (source_mode, count) VALUES (${fullRecord.source_mode}, 1)
+    ON CONFLICT (source_mode) DO UPDATE SET count = source_mode_stats.count + 1
+  `.catch(() => {});
   
   return fullRecord;
 }
@@ -254,6 +373,58 @@ export async function getPublicGallery(
   })) as CreationRecord[];
 }
 
+export async function getUserCreations(
+  deviceId: string,
+  limit = 30,
+  offset = 0
+): Promise<CreationRecord[]> {
+  const sql = getSql();
+  const username = await getAssociatedUsername(deviceId);
+
+  if (!sql) {
+    let list = Array.from(globalMemoryStore.creations.values())
+      .filter((c) => !c.is_hidden && (c.device_id === deviceId || (username && c.username === username)))
+      .sort((a, b) => {
+        const timeDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return b.id.localeCompare(a.id);
+      });
+    return list.slice(offset, offset + limit).map((c) => ({
+      ...c,
+      grid_data: undefined,
+      disturbed_positions: undefined,
+    })) as any[];
+  }
+
+  let rows;
+  if (username) {
+    rows = await sql`
+      SELECT id, device_id, created_at, thumbnail_url, source_mode, parent_creation_id, is_daily_challenge, report_count, is_hidden, is_public, view_count, username 
+      FROM creations 
+      WHERE is_hidden = FALSE 
+        AND (device_id = ${deviceId} OR username = ${username})
+      ORDER BY created_at DESC, id DESC 
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+  } else {
+    rows = await sql`
+      SELECT id, device_id, created_at, thumbnail_url, source_mode, parent_creation_id, is_daily_challenge, report_count, is_hidden, is_public, view_count, username 
+      FROM creations 
+      WHERE is_hidden = FALSE 
+        AND device_id = ${deviceId} AND username IS NULL
+      ORDER BY created_at DESC, id DESC 
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+  }
+
+  return rows.map((row: any) => ({
+    ...row,
+    grid_data: undefined,
+    disturbed_positions: undefined,
+  })) as CreationRecord[];
+}
+
+
 export async function reportCreation(creationId: string, reason?: string): Promise<{ hidden: boolean; report_count: number }> {
   const sql = getSql();
   const threshold = 3;
@@ -264,6 +435,7 @@ export async function reportCreation(creationId: string, reason?: string): Promi
     item.report_count += 1;
     if (item.report_count >= threshold) {
       item.is_hidden = true;
+      incrementCounter('total_hidden').catch(() => {});
     }
     globalMemoryStore.reports.push({
       id: globalMemoryStore.reportCounter++,
@@ -284,6 +456,7 @@ export async function reportCreation(creationId: string, reason?: string): Promi
     RETURNING report_count, is_hidden
   `;
   if (rows.length === 0) return { hidden: false, report_count: 0 };
+  if (rows[0].is_hidden) incrementCounter('total_hidden').catch(() => {});
   return { hidden: rows[0].is_hidden, report_count: rows[0].report_count };
 }
 
@@ -294,9 +467,11 @@ export async function getDailyChallenge(): Promise<CreationRecord | null> {
   if (!sql) {
     const challenge = globalMemoryStore.dailyChallenges.get(today);
     if (challenge) {
-      return getCreationById(challenge.creation_id);
+      const creation = globalMemoryStore.creations.get(challenge.creation_id);
+      // Only return if public and not hidden
+      if (creation && creation.is_public && !creation.is_hidden) return creation;
     }
-    // Pick the most recent public creation as fallback
+    // Fallback: most recent public creation
     const firstPublic = Array.from(globalMemoryStore.creations.values()).find((c) => c.is_public && !c.is_hidden);
     return firstPublic || null;
   }
@@ -304,7 +479,7 @@ export async function getDailyChallenge(): Promise<CreationRecord | null> {
   const rows = await sql`
     SELECT c.* FROM creations c 
     JOIN daily_challenges d ON c.id = d.creation_id 
-    WHERE d.active_date = ${today} AND c.is_hidden = FALSE
+    WHERE d.active_date = ${today} AND c.is_hidden = FALSE AND c.is_public = TRUE
   `;
   if (rows.length > 0) {
     const row = rows[0] as any;
@@ -315,8 +490,12 @@ export async function getDailyChallenge(): Promise<CreationRecord | null> {
     };
   }
 
-  // If no challenge set for today, pick most recent public creation or fallback
-  const fallbackRes = await sql`SELECT * FROM creations WHERE is_hidden = FALSE ORDER BY created_at DESC LIMIT 1`;
+  // Fallback: most recent PUBLIC non-hidden creation
+  const fallbackRes = await sql`
+    SELECT * FROM creations 
+    WHERE is_hidden = FALSE AND is_public = TRUE 
+    ORDER BY created_at DESC LIMIT 1
+  `;
   if (fallbackRes.length > 0) {
     const row = fallbackRes[0] as any;
     return {
@@ -326,6 +505,24 @@ export async function getDailyChallenge(): Promise<CreationRecord | null> {
     };
   }
   return null;
+}
+
+export async function setDailyChallenge(creationId: string): Promise<void> {
+  const sql = getSql();
+  const today = new Date().toISOString().split('T')[0];
+
+  if (!sql) {
+    globalMemoryStore.dailyChallenges.set(today, { id: Date.now(), creation_id: creationId, active_date: today });
+    return;
+  }
+  await sql`
+    INSERT INTO daily_challenges (creation_id, active_date)
+    VALUES (${creationId}, ${today})
+    ON CONFLICT (active_date) DO UPDATE SET creation_id = ${creationId}
+  `;
+  // Also invalidate creation's is_daily_challenge flag
+  await sql`UPDATE creations SET is_daily_challenge = FALSE WHERE is_daily_challenge = TRUE AND id != ${creationId}`;
+  await sql`UPDATE creations SET is_daily_challenge = TRUE WHERE id = ${creationId}`;
 }
 
 export async function updateDeviceStreak(deviceId: string): Promise<DeviceStreakRecord> {
@@ -347,15 +544,18 @@ export async function updateDeviceStreak(deviceId: string): Promise<DeviceStreak
     let streak = globalMemoryStore.deviceStreaks.get(key);
     if (!streak) {
       streak = { device_id: key, current_streak: 1, longest_streak: 1, last_completed_date: today, username: username || null };
+      incrementDailyActivity('challenge_completions').catch(() => {});
     } else if (streak.last_completed_date === today) {
       return streak;
     } else if (streak.last_completed_date === yesterday) {
       streak.current_streak += 1;
       streak.longest_streak = Math.max(streak.longest_streak, streak.current_streak);
       streak.last_completed_date = today;
+      incrementDailyActivity('challenge_completions').catch(() => {});
     } else {
       streak.current_streak = 1;
       streak.last_completed_date = today;
+      incrementDailyActivity('challenge_completions').catch(() => {});
     }
     globalMemoryStore.deviceStreaks.set(key, streak);
     return streak;
@@ -388,6 +588,8 @@ export async function updateDeviceStreak(deviceId: string): Promise<DeviceStreak
         VALUES (${deviceId}, ${1}, ${1}, ${today}, NULL)
       `;
     }
+    incrementDailyActivity('challenge_completions').catch(() => {});
+    incrementCounter('total_challenge_completions').catch(() => {});
     return newStreak;
   }
 
@@ -412,6 +614,9 @@ export async function updateDeviceStreak(deviceId: string): Promise<DeviceStreak
       WHERE device_id = ${deviceId} AND username IS NULL
     `;
   }
+
+  incrementDailyActivity('challenge_completions').catch(() => {});
+  incrementCounter('total_challenge_completions').catch(() => {});
 
   return {
     device_id: deviceId,
@@ -457,19 +662,25 @@ export async function incrementViewCount(id: string): Promise<void> {
     if (item) {
       item.view_count = (item.view_count || 0) + 1;
     }
+    incrementCounter('total_views').catch(() => {});
+    incrementDailyActivity('views').catch(() => {});
     return;
   }
   await sql`UPDATE creations SET view_count = COALESCE(view_count, 0) + 1 WHERE id = ${id}`;
+  incrementCounter('total_views').catch(() => {});
+  incrementDailyActivity('views').catch(() => {});
 }
 
 // Account & Session Operations
 
-export async function createAccount(username: string, pinHash: string): Promise<AccountRecord> {
+export async function createAccount(username: string, pinHash: string, email?: string | null): Promise<AccountRecord> {
   const sql = getSql();
   const lowerUsername = username.toLowerCase().trim();
+  const lowerEmail = email ? email.toLowerCase().trim() : null;
   const record: AccountRecord = {
     username: lowerUsername,
     pin_hash: pinHash,
+    email: lowerEmail,
     created_at: new Date().toISOString(),
   };
 
@@ -478,13 +689,17 @@ export async function createAccount(username: string, pinHash: string): Promise<
       throw new Error('Username already exists');
     }
     globalMemoryStore.accounts.set(lowerUsername, record);
+    incrementCounter('total_accounts').catch(() => {});
+    incrementDailyActivity('new_accounts').catch(() => {});
     return record;
   }
 
   await sql`
-    INSERT INTO accounts (username, pin_hash)
-    VALUES (${lowerUsername}, ${pinHash})
+    INSERT INTO accounts (username, pin_hash, email)
+    VALUES (${lowerUsername}, ${pinHash}, ${lowerEmail})
   `;
+  incrementCounter('total_accounts').catch(() => {});
+  incrementDailyActivity('new_accounts').catch(() => {});
   return record;
 }
 
@@ -499,6 +714,33 @@ export async function getAccountByUsername(username: string): Promise<AccountRec
   const rows = await sql`SELECT * FROM accounts WHERE username = ${lowerUsername}`;
   if (rows.length === 0) return null;
   return rows[0] as AccountRecord;
+}
+
+/** Look up account by email (case-insensitive). Returns null if not found. */
+export async function getAccountByEmail(email: string): Promise<AccountRecord | null> {
+  const sql = getSql();
+  const lowerEmail = email.toLowerCase().trim();
+
+  if (!sql) {
+    for (const account of globalMemoryStore.accounts.values()) {
+      if (account.email && account.email.toLowerCase() === lowerEmail) return account;
+    }
+    return null;
+  }
+
+  const rows = await sql`SELECT * FROM accounts WHERE LOWER(email) = ${lowerEmail}`;
+  if (rows.length === 0) return null;
+  return rows[0] as AccountRecord;
+}
+
+/** Lookup by username OR email — whichever the user provided. */
+export async function getAccountByUsernameOrEmail(identifier: string): Promise<AccountRecord | null> {
+  const lower = identifier.toLowerCase().trim();
+  // Heuristic: if it contains '@', treat as email
+  if (lower.includes('@')) {
+    return getAccountByEmail(lower);
+  }
+  return getAccountByUsername(lower);
 }
 
 export async function associateDeviceWithAccount(deviceId: string, username: string): Promise<void> {
@@ -528,6 +770,13 @@ export async function getAssociatedUsername(deviceId: string): Promise<string | 
   const rows = await sql`SELECT username FROM device_sessions WHERE device_id = ${deviceId}`;
   if (rows.length === 0) return null;
   return rows[0].username;
+}
+
+/** Get the full account record for a session (for isAdmin check). */
+export async function getAccountForSession(deviceId: string): Promise<AccountRecord | null> {
+  const username = await getAssociatedUsername(deviceId);
+  if (!username) return null;
+  return getAccountByUsername(username);
 }
 
 export async function removeDeviceAssociation(deviceId: string): Promise<void> {
@@ -610,6 +859,125 @@ export async function migrateDeviceDataToAccount(deviceId: string, username: str
         SET username = ${lowerUsername}
         WHERE device_id = ${deviceId} AND username IS NULL
       `;
+    }
+  }
+}
+
+// ─── Admin Operations ─────────────────────────────────────────────────────────
+
+export async function getAdminAnalytics(): Promise<AdminAnalytics> {
+  const sql = getSql();
+
+  if (!sql) {
+    // In-memory analytics
+    const creations = Array.from(globalMemoryStore.creations.values());
+    const daily7 = Array.from(globalMemoryStore.dailyActivity.values())
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 7);
+    const streaks = Array.from(globalMemoryStore.deviceStreaks.values())
+      .sort((a, b) => b.longest_streak - a.longest_streak)
+      .slice(0, 10)
+      .map(s => ({ username: s.username || null, device_id: s.device_id, current_streak: s.current_streak, longest_streak: s.longest_streak }));
+    const modeMap = new Map<string, number>();
+    for (const c of creations) {
+      modeMap.set(c.source_mode, (modeMap.get(c.source_mode) || 0) + 1);
+    }
+    return {
+      total_creations: globalMemoryStore.analyticsCounters.get('total_creations') || 0,
+      total_public: globalMemoryStore.analyticsCounters.get('total_public') || 0,
+      total_hidden: globalMemoryStore.analyticsCounters.get('total_hidden') || 0,
+      total_accounts: globalMemoryStore.analyticsCounters.get('total_accounts') || 0,
+      total_challenge_completions: globalMemoryStore.analyticsCounters.get('total_challenge_completions') || 0,
+      total_views: globalMemoryStore.analyticsCounters.get('total_views') || 0,
+      daily_activity: daily7,
+      source_mode_stats: Array.from(modeMap.entries()).map(([source_mode, count]) => ({ source_mode, count })),
+      top_streaks: streaks,
+      reported_creations: creations.filter(c => c.report_count > 0).sort((a, b) => b.report_count - a.report_count).slice(0, 20),
+    };
+  }
+
+  // Parallel fast reads from pre-aggregated tables
+  const [countersRows, dailyRows, modeRows, streakRows, reportedRows] = await Promise.all([
+    sql`SELECT key, value FROM analytics_counters`,
+    sql`SELECT * FROM daily_activity ORDER BY date DESC LIMIT 7`,
+    sql`SELECT source_mode, count FROM source_mode_stats ORDER BY count DESC`,
+    sql`SELECT username, device_id, current_streak, longest_streak FROM device_streaks ORDER BY longest_streak DESC LIMIT 10`,
+    sql`SELECT id, device_id, created_at, thumbnail_url, source_mode, report_count, is_hidden, is_public, username FROM creations WHERE report_count > 0 AND is_hidden = FALSE ORDER BY report_count DESC LIMIT 20`,
+  ]);
+
+  const counters: Record<string, number> = {};
+  for (const row of countersRows as any[]) {
+    counters[row.key] = Number(row.value);
+  }
+
+  return {
+    total_creations: counters['total_creations'] || 0,
+    total_public: counters['total_public'] || 0,
+    total_hidden: counters['total_hidden'] || 0,
+    total_accounts: counters['total_accounts'] || 0,
+    total_challenge_completions: counters['total_challenge_completions'] || 0,
+    total_views: counters['total_views'] || 0,
+    daily_activity: dailyRows as any[],
+    source_mode_stats: modeRows as any[],
+    top_streaks: streakRows.map((r: any) => ({ username: r.username, device_id: r.device_id, current_streak: Number(r.current_streak), longest_streak: Number(r.longest_streak) })),
+    reported_creations: reportedRows as any[],
+  };
+}
+
+export async function adminListUsers(limit = 50, offset = 0): Promise<Array<{ username: string; email: string | null; created_at: string; creation_count: number; current_streak: number }>> {
+  const sql = getSql();
+
+  if (!sql) {
+    return Array.from(globalMemoryStore.accounts.values()).slice(offset, offset + limit).map(a => ({
+      username: a.username,
+      email: a.email || null,
+      created_at: a.created_at,
+      creation_count: Array.from(globalMemoryStore.creations.values()).filter(c => c.username === a.username).length,
+      current_streak: globalMemoryStore.deviceStreaks.get(`user:${a.username}`)?.current_streak || 0,
+    }));
+  }
+
+  const rows = await sql`
+    SELECT 
+      a.username, a.email, a.created_at,
+      COUNT(DISTINCT c.id) AS creation_count,
+      COALESCE(ds.current_streak, 0) AS current_streak
+    FROM accounts a
+    LEFT JOIN creations c ON c.username = a.username
+    LEFT JOIN device_streaks ds ON ds.username = a.username
+    GROUP BY a.username, a.email, a.created_at, ds.current_streak
+    ORDER BY a.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+  return rows.map((r: any) => ({
+    username: r.username,
+    email: r.email || null,
+    created_at: r.created_at,
+    creation_count: Number(r.creation_count),
+    current_streak: Number(r.current_streak),
+  }));
+}
+
+export async function adminToggleCreationVisibility(id: string, hidden: boolean): Promise<void> {
+  const sql = getSql();
+
+  if (!sql) {
+    const item = globalMemoryStore.creations.get(id);
+    if (item) item.is_hidden = hidden;
+    return;
+  }
+  await sql`UPDATE creations SET is_hidden = ${hidden} WHERE id = ${id}`;
+  // Update counters
+  if (hidden) {
+    incrementCounter('total_hidden').catch(() => {});
+  } else {
+    // Decrement hidden
+    const sql2 = getSql();
+    if (sql2) {
+      sql2`
+        UPDATE analytics_counters SET value = GREATEST(0, value - 1), updated_at = NOW()
+        WHERE key = 'total_hidden'
+      `.catch(() => {});
     }
   }
 }
