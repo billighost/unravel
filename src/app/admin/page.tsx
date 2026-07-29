@@ -60,6 +60,7 @@ const COLORS: Record<string, string> = {
   draw: '#FF9500',
   type: '#34C759',
   camera: '#5AC8FA',
+  canvas: '#AF52DE',
   unknown: '#8E8E93',
 };
 
@@ -161,6 +162,7 @@ export default function AdminPage() {
 
   // Reports hide/unhide state
   const [hidingId, setHidingId] = useState<string | null>(null);
+  const [reportsSubTab, setReportsSubTab] = useState<'unresolved' | 'resolved'>('unresolved');
 
   // ── Auth guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -230,9 +232,11 @@ export default function AdminPage() {
   }, [checkingAuth, isAdmin]);
 
   useEffect(() => {
-    if (activeTab === 'users') loadUsers();
-    if (activeTab === 'set-daily') loadGallery();
-  }, [activeTab]);
+    if (!checkingAuth && isAdmin) {
+      if (activeTab === 'users') loadUsers();
+      if (activeTab === 'set-daily') loadGallery();
+    }
+  }, [activeTab, checkingAuth, isAdmin, loadUsers, loadGallery]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleSetDaily = async () => {
@@ -415,16 +419,16 @@ export default function AdminPage() {
                     <SectionHeader icon={<Hash size={18} />} title="SOURCE MODE BREAKDOWN" />
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                       {analytics.source_mode_stats.map(s => {
-                        const total = analytics.source_mode_stats.reduce((acc, x) => acc + x.count, 0);
-                        const pct = total > 0 ? (s.count / total * 100).toFixed(1) : '0';
-                        const color = COLORS[s.source_mode] || COLORS.unknown;
+                        const total = analytics.source_mode_stats.reduce((acc, x) => acc + Number(x.count), 0);
+                        const pct = total > 0 ? ((Number(s.count) / total) * 100).toFixed(1) : '0';
+                        const color = COLORS[s.source_mode.toLowerCase()] || COLORS.unknown;
                         return (
                           <div key={s.source_mode} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <span className="font-heading" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', minWidth: '56px', textTransform: 'uppercase' }}>{s.source_mode}</span>
                             <div style={{ flex: 1, height: '18px', backgroundColor: 'var(--bg)', border: '2px solid var(--ink)', overflow: 'hidden' }}>
                               <div style={{ width: `${pct}%`, height: '100%', backgroundColor: color, transition: 'width 0.5s ease' }} />
                             </div>
-                            <span style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', minWidth: '40px', textAlign: 'right' }}>{fmtNum(s.count)}</span>
+                            <span style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', minWidth: '40px', textAlign: 'right' }}>{fmtNum(Number(s.count))}</span>
                             <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', minWidth: '36px' }}>{pct}%</span>
                           </div>
                         );
@@ -441,7 +445,7 @@ export default function AdminPage() {
                       {analytics.top_streaks.map((s, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', backgroundColor: i === 0 ? 'rgba(255,59,48,0.06)' : 'transparent', border: '2px solid var(--border)' }}>
                           <span className="font-heading" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', minWidth: '20px' }}>#{i + 1}</span>
-                          <span className="font-heading" style={{ fontSize: '0.8rem', flex: 1, color: 'var(--ink)' }}>
+                          <span className="font-heading" style={{ fontSize: '0.8rem', flex: 1, color: 'var(--ink)', textTransform: 'none' }}>
                             {s.username || s.device_id.slice(0, 8) + '...'}
                           </span>
                           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -519,7 +523,7 @@ export default function AdminPage() {
                   </div>
                   {users.map((u) => (
                     <div key={u.username} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: '0.5rem', padding: '0.5rem', backgroundColor: 'var(--bg)', border: '2px solid var(--border)', alignItems: 'center' }}>
-                      <span className="font-heading" style={{ fontSize: '0.78rem', color: 'var(--ink)', wordBreak: 'break-all' }}>{u.username}</span>
+                      <span className="font-heading" style={{ fontSize: '0.78rem', color: 'var(--ink)', wordBreak: 'break-all', textTransform: 'none' }}>{u.username}</span>
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', wordBreak: 'break-all' }}>{u.email || '—'}</span>
                       <span className="font-heading" style={{ fontSize: '0.8rem', color: 'var(--ink)', textAlign: 'center' }}>{u.creation_count}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'center' }}>
@@ -535,73 +539,117 @@ export default function AdminPage() {
         )}
 
         {/* REPORTS TAB */}
-        {activeTab === 'reports' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <div style={{ backgroundColor: 'var(--surface)', border: '3px solid var(--ink)', boxShadow: '4px 4px 0 var(--ink)', padding: '1.25rem' }}>
-              <SectionHeader icon={<Flag size={18} color="var(--accent)" />} title="REPORTED CREATIONS" />
-              {!analytics?.reported_creations || analytics.reported_creations.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', fontSize: '0.85rem' }}>
-                  🎉 No reported creations right now.
+        {activeTab === 'reports' && (() => {
+          const reportedList = analytics?.reported_creations || [];
+          const unresolvedList = reportedList.filter(c => !c.is_hidden);
+          const resolvedList = reportedList.filter(c => c.is_hidden);
+          const filteredReports = reportsSubTab === 'resolved' ? resolvedList : unresolvedList;
+
+          return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <div style={{ backgroundColor: 'var(--surface)', border: '3px solid var(--ink)', boxShadow: '4px 4px 0 var(--ink)', padding: '1.25rem' }}>
+                <SectionHeader icon={<Flag size={18} color="var(--accent)" />} title="REPORTED CREATIONS" />
+
+                {/* Sub-tabs */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '2px solid var(--border)', paddingBottom: '0.5rem' }}>
+                  <button
+                    onClick={() => setReportsSubTab('unresolved')}
+                    style={{
+                      padding: '0.45rem 0.9rem',
+                      fontSize: '0.72rem',
+                      fontFamily: 'var(--font-heading)',
+                      backgroundColor: reportsSubTab === 'unresolved' ? 'var(--ink)' : 'transparent',
+                      color: reportsSubTab === 'unresolved' ? '#FFFFFF' : 'var(--ink)',
+                      border: '2px solid var(--ink)',
+                      cursor: 'pointer',
+                      boxShadow: reportsSubTab === 'unresolved' ? 'none' : '2px 2px 0 var(--ink)',
+                      transition: 'all 0.1s ease',
+                    }}
+                  >
+                    UNRESOLVED ({unresolvedList.length})
+                  </button>
+                  <button
+                    onClick={() => setReportsSubTab('resolved')}
+                    style={{
+                      padding: '0.45rem 0.9rem',
+                      fontSize: '0.72rem',
+                      fontFamily: 'var(--font-heading)',
+                      backgroundColor: reportsSubTab === 'resolved' ? 'var(--ink)' : 'transparent',
+                      color: reportsSubTab === 'resolved' ? '#FFFFFF' : 'var(--ink)',
+                      border: '2px solid var(--ink)',
+                      cursor: 'pointer',
+                      boxShadow: reportsSubTab === 'resolved' ? 'none' : '2px 2px 0 var(--ink)',
+                      transition: 'all 0.1s ease',
+                    }}
+                  >
+                    RESOLVED ({resolvedList.length})
+                  </button>
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {analytics.reported_creations.map(c => (
-                    <div key={c.id} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.75rem',
-                      backgroundColor: c.is_hidden ? 'rgba(0,0,0,0.04)' : 'var(--bg)',
-                      border: `2px solid ${c.is_hidden ? 'var(--border)' : 'var(--ink)'}`,
-                      opacity: c.is_hidden ? 0.6 : 1,
-                      flexWrap: 'wrap',
-                    }}>
-                      {/* Thumbnail */}
-                      <div style={{ width: '52px', height: '52px', flexShrink: 0, border: '2px solid var(--ink)', overflow: 'hidden', backgroundColor: 'var(--bg)' }}>
-                        {c.thumbnail_url ? (
-                          <img src={c.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', imageRendering: 'pixelated' }} />
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Image size={20} color="var(--border)" />
-                          </div>
-                        )}
-                      </div>
-                      {/* Info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="font-heading" style={{ fontSize: '0.72rem', color: 'var(--ink)', wordBreak: 'break-all' }}>{c.id}</div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', marginTop: '0.2rem' }}>
-                          by {c.username || 'anonymous'} · {c.source_mode} · {fmtDate(c.created_at)}
+
+                {filteredReports.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', fontSize: '0.85rem', border: '2px dashed var(--border)' }}>
+                    {reportsSubTab === 'resolved' ? 'No resolved reports. Hide a reported item to see it here.' : '🎉 No reported creations right now.'}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {filteredReports.map(c => (
+                      <div key={c.id} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        padding: '0.75rem',
+                        backgroundColor: c.is_hidden ? 'rgba(0,0,0,0.04)' : 'var(--bg)',
+                        border: `2px solid ${c.is_hidden ? 'var(--border)' : 'var(--ink)'}`,
+                        opacity: c.is_hidden ? 0.8 : 1,
+                        flexWrap: 'wrap',
+                      }}>
+                        {/* Thumbnail */}
+                        <div style={{ width: '52px', height: '52px', flexShrink: 0, border: '2px solid var(--ink)', overflow: 'hidden', backgroundColor: 'var(--bg)' }}>
+                          {c.thumbnail_url ? (
+                            <img src={c.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', imageRendering: 'pixelated' }} />
+                          ) : (
+                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Image size={20} color="var(--border)" />
+                            </div>
+                          )}
                         </div>
+                        {/* Info */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="font-heading" style={{ fontSize: '0.72rem', color: 'var(--ink)', wordBreak: 'break-all' }}>{c.id}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', marginTop: '0.2rem' }}>
+                            by {c.username || 'anonymous'} · {c.source_mode} · {fmtDate(c.created_at)}
+                          </div>
+                        </div>
+                        {/* Report count */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: 'rgba(255,59,48,0.1)', padding: '0.25rem 0.5rem', border: '2px solid var(--accent)' }}>
+                          <Flag size={12} color="var(--accent)" />
+                          <span className="font-heading" style={{ fontSize: '0.75rem', color: 'var(--accent)' }}>{c.report_count}</span>
+                        </div>
+                        {/* Hide/Show button */}
+                        <button
+                          onClick={() => handleToggleHide(c.id, !c.is_hidden)}
+                          disabled={hidingId === c.id}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '0.35rem',
+                            padding: '0.4rem 0.65rem',
+                            backgroundColor: c.is_hidden ? 'var(--surface)' : '#FF3B30',
+                            color: c.is_hidden ? 'var(--ink)' : '#FFFFFF',
+                            border: `2px solid ${c.is_hidden ? 'var(--ink)' : '#FF3B30'}`,
+                            fontFamily: 'var(--font-heading)', fontSize: '0.7rem',
+                            cursor: 'pointer', flexShrink: 0,
+                            opacity: hidingId === c.id ? 0.5 : 1,
+                          }}
+                        >
+                          {c.is_hidden ? <><Eye size={12} /> RESTORE</> : <><EyeOff size={12} /> HIDE</>}
+                        </button>
                       </div>
-                      {/* Report count */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: 'rgba(255,59,48,0.1)', padding: '0.25rem 0.5rem', border: '2px solid var(--accent)' }}>
-                        <Flag size={12} color="var(--accent)" />
-                        <span className="font-heading" style={{ fontSize: '0.75rem', color: 'var(--accent)' }}>{c.report_count}</span>
-                      </div>
-                      {/* Hide/Show button */}
-                      <button
-                        onClick={() => handleToggleHide(c.id, !c.is_hidden)}
-                        disabled={hidingId === c.id}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '0.35rem',
-                          padding: '0.4rem 0.65rem',
-                          backgroundColor: c.is_hidden ? 'var(--surface)' : '#FF3B30',
-                          color: c.is_hidden ? 'var(--ink)' : '#FFFFFF',
-                          border: `2px solid ${c.is_hidden ? 'var(--ink)' : '#FF3B30'}`,
-                          fontFamily: 'var(--font-heading)', fontSize: '0.7rem',
-                          cursor: 'pointer', flexShrink: 0,
-                          opacity: hidingId === c.id ? 0.5 : 1,
-                        }}
-                      >
-                        {c.is_hidden ? <><Eye size={12} /> RESTORE</> : <><EyeOff size={12} /> HIDE</>}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          );
+        })()}
 
         {/* TODAY'S PICTURE TAB */}
         {activeTab === 'set-daily' && (

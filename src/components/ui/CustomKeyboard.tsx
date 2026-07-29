@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Delete, CornerDownLeft, ArrowUp, Check } from 'lucide-react';
 import { soundEngine } from '@/lib/audio/soundEngine';
 
@@ -24,6 +24,30 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
 }) => {
   const [isShift, setIsShift] = useState(true); // default capital since pixel font looks great in caps
   const [showSymbols, setShowSymbols] = useState(false);
+  const [activePressedKey, setActivePressedKey] = useState<{
+    key: string;
+    rect: DOMRect | null;
+  } | null>(null);
+
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const wasTriggeredByPointer = useRef(false);
+  const lastSpaceTapRef = useRef<number>(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Keep latest value in ref to avoid stale closure during rapid intervals
+  const valueRef = useRef(value);
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
   const supportsMultiLine = maxLines > 1;
 
@@ -49,14 +73,41 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
 
   const rows = showSymbols ? symbolRows : letterRows;
 
-  const handleKeyPress = (key: string) => {
+  const triggerHaptic = () => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(8); // Short subtle vibration
+    }
+  };
+
+  const handleKeyPress = (key: string, isRepeat = false) => {
     soundEngine.playTypeClick();
+    triggerHaptic();
+
+    const currentValue = valueRef.current;
 
     if (key === 'BACKSPACE') {
-      onChange(value.slice(0, -1));
+      onChange(currentValue.slice(0, -1));
     } else if (key === 'SPACE') {
-      if (value.length < maxLength) {
-        onChange(value + ' ');
+      if (isRepeat) {
+        if (currentValue.length < maxLength) {
+          onChange(currentValue + ' ');
+        }
+      } else {
+        const now = Date.now();
+        if (now - lastSpaceTapRef.current < 300) {
+          // Double tap space: backspace the space and append period + space
+          if (currentValue.endsWith(' ')) {
+            onChange(currentValue.slice(0, -1) + '. ');
+          } else {
+            onChange(currentValue + '. ');
+          }
+          lastSpaceTapRef.current = 0;
+        } else {
+          if (currentValue.length < maxLength) {
+            onChange(currentValue + ' ');
+          }
+          lastSpaceTapRef.current = now;
+        }
       }
     } else if (key === 'SHIFT') {
       setIsShift(!isShift);
@@ -67,19 +118,72 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
     } else if (key === 'abc') {
       setShowSymbols(false);
     } else if (key === 'RETURN') {
-      const currentLineCount = (value.match(/\n/g) || []).length + 1;
+      const currentLineCount = (currentValue.match(/\n/g) || []).length + 1;
       if (currentLineCount < maxLines) {
-        onChange(value + '\n');
+        onChange(currentValue + '\n');
       }
     } else {
-      if (value.length < maxLength) {
-        onChange(value + (isShift && !showSymbols ? key.toUpperCase() : key.toLowerCase()));
+      if (currentValue.length < maxLength) {
+        onChange(currentValue + (isShift && !showSymbols ? key.toUpperCase() : key.toLowerCase()));
       }
     }
   };
 
+  const startRepeat = (key: string) => {
+    stopRepeat();
+
+    // Trigger immediate key press
+    handleKeyPress(key, false);
+
+    // Only repeat letters, numbers, spaces, and backspace
+    const nonRepeatable = ['SHIFT', 'DONE', '?123', 'abc', 'RETURN'];
+    if (nonRepeatable.includes(key)) return;
+
+    timeoutRef.current = setTimeout(() => {
+      intervalRef.current = setInterval(() => {
+        handleKeyPress(key, true);
+      }, 75);
+    }, 400);
+  };
+
+  const stopRepeat = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  // Magnifier layout coordinates helper
+  let magnifierStyle: React.CSSProperties = {};
+  const shouldShowMagnifier =
+    activePressedKey &&
+    activePressedKey.rect &&
+    containerRef.current &&
+    !['SHIFT', 'BACKSPACE', 'SPACE', 'DONE', 'RETURN', '?123', 'abc'].includes(activePressedKey.key);
+
+  if (shouldShowMagnifier && activePressedKey && activePressedKey.rect && containerRef.current) {
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const keyRect = activePressedKey.rect;
+    const left = keyRect.left - containerRect.left + keyRect.width / 2;
+    const bottom = containerRect.bottom - keyRect.top + 8;
+
+    magnifierStyle = {
+      position: 'absolute',
+      left: `${left}px`,
+      bottom: `${bottom}px`,
+      transform: 'translateX(-50%)',
+      pointerEvents: 'none',
+      zIndex: 10000,
+    };
+  }
+
   return (
     <motion.div
+      ref={containerRef}
       initial={{ y: '100%' }}
       animate={{ y: 0 }}
       exit={{ y: '100%' }}
@@ -101,6 +205,55 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
         pointerEvents: 'auto',
       }}
     >
+      {/* Floating Key Magnifier */}
+      <AnimatePresence>
+        {shouldShowMagnifier && activePressedKey && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 12 }}
+            transition={{ type: 'spring', damping: 15, stiffness: 350 }}
+            style={{
+              ...magnifierStyle,
+              backgroundColor: 'var(--surface)',
+              border: '3px solid var(--ink)',
+              boxShadow: '4px 4px 0 var(--ink)',
+              borderRadius: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '48px',
+              height: '48px',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '-8px',
+                left: '50%',
+                transform: 'translateX(-50%) rotate(45deg)',
+                width: '12px',
+                height: '12px',
+                backgroundColor: 'var(--surface)',
+                borderRight: '3px solid var(--ink)',
+                borderBottom: '3px solid var(--ink)',
+              }}
+            />
+            <span
+              className="font-heading"
+              style={{
+                fontSize: '1.5rem',
+                fontWeight: 'bold',
+                color: 'var(--ink)',
+                textTransform: 'uppercase',
+              }}
+            >
+              {isShift && !showSymbols ? activePressedKey.key.toUpperCase() : activePressedKey.key.toLowerCase()}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {rows.map((row, rowIndex) => (
         <div
           key={rowIndex}
@@ -168,16 +321,64 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                 key={key}
                 data-virtual-key="true"
                 onPointerDown={(e) => {
-                  e.preventDefault(); // Prevents input blur
+                  if (e.button !== 0) return;
+                  e.preventDefault();
+                  wasTriggeredByPointer.current = true;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setActivePressedKey({ key, rect });
+                  startRepeat(key);
+                  try {
+                    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  } catch (err) {}
+                }}
+                onPointerUp={(e) => {
+                  e.preventDefault();
+                  stopRepeat();
+                  setActivePressedKey(null);
+                  try {
+                    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                  } catch (err) {}
+                }}
+                onPointerCancel={(e) => {
+                  e.preventDefault();
+                  stopRepeat();
+                  setActivePressedKey(null);
+                }}
+                onPointerLeave={(e) => {
+                  e.preventDefault();
+                  stopRepeat();
+                  setActivePressedKey(null);
+                }}
+                onPointerMove={(e) => {
+                  if (!activePressedKey) return;
+                  const rect = activePressedKey.rect;
+                  if (rect) {
+                    const x = e.clientX;
+                    const y = e.clientY;
+                    const buffer = 20; // 20px leeway
+                    if (
+                      x < rect.left - buffer ||
+                      x > rect.right + buffer ||
+                      y < rect.top - buffer ||
+                      y > rect.bottom + buffer
+                    ) {
+                      stopRepeat();
+                      setActivePressedKey(null);
+                    }
+                  }
                 }}
                 onClick={(e) => {
                   e.preventDefault();
+                  if (wasTriggeredByPointer.current) {
+                    wasTriggeredByPointer.current = false;
+                    return;
+                  }
                   handleKeyPress(key);
                 }}
                 whileTap={{
-                  scale: 0.92,
-                  x: 1,
-                  y: 1,
+                  scale: 0.95,
+                  x: 2,
+                  y: 2,
                   backgroundColor: 'var(--accent)',
                   color: '#FFFFFF',
                   boxShadow: '0px 0px 0 var(--ink)',

@@ -460,7 +460,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
   );
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block', zIndex: 90 }}>
+    <div style={{ position: 'relative', display: 'inline-block', zIndex: isAccountOpen ? 1000 : isOpen ? 95 : 90 }}>
       {/* Menu Button Trigger */}
       <button
         data-ui-obstacle="true"

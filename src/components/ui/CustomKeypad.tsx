@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Delete, Check } from 'lucide-react';
 import { soundEngine } from '@/lib/audio/soundEngine';
@@ -18,6 +18,26 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
   onDone,
   maxLength = 6,
 }) => {
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const wasTriggeredByPointer = useRef(false);
+  const activePressedKeyRef = useRef<string | null>(null);
+  const [activeRect, setActiveRect] = useState<DOMRect | null>(null);
+
+  // Keep latest value in ref to avoid stale closure during rapid intervals
+  const valueRef = useRef(value);
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
   const rows = [
     ['1', '2', '3'],
     ['4', '5', '6'],
@@ -25,17 +45,53 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
     ['BACKSPACE', '0', 'DONE'],
   ];
 
+  const triggerHaptic = () => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(8);
+    }
+  };
+
   const handleKeyPress = (key: string) => {
     soundEngine.playTypeClick();
+    triggerHaptic();
+
+    const currentValue = valueRef.current;
 
     if (key === 'BACKSPACE') {
-      onChange(value.slice(0, -1));
+      onChange(currentValue.slice(0, -1));
     } else if (key === 'DONE') {
       if (onDone) onDone();
     } else {
-      if (value.length < maxLength) {
-        onChange(value + key);
+      if (currentValue.length < maxLength) {
+        onChange(currentValue + key);
       }
+    }
+  };
+
+  const startRepeat = (key: string) => {
+    stopRepeat();
+
+    // Trigger immediate key press
+    handleKeyPress(key);
+
+    // Don't repeat DONE key
+    if (key === 'DONE') return;
+
+    timeoutRef.current = setTimeout(() => {
+      intervalRef.current = setInterval(() => {
+        handleKeyPress(key);
+      }, 75);
+    }, 400);
+  };
+
+  const stopRepeat = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
   };
 
@@ -53,7 +109,6 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
         backgroundColor: 'var(--surface)',
         borderTop: '4px solid var(--ink)',
         boxShadow: '0 -4px 16px rgba(0,0,0,0.15)',
-        // Responsive padding — safe area + clamp
         padding: 'clamp(0.4rem, 1.5vw, 0.75rem) clamp(0.25rem, 2vw, 0.5rem) calc(clamp(0.4rem, 1.5vw, 0.75rem) + env(safe-area-inset-bottom)) clamp(0.25rem, 2vw, 0.5rem)',
         zIndex: 9999,
         display: 'flex',
@@ -69,7 +124,6 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: 'clamp(0.2rem, 0.8vw, 0.4rem)',
-          // Responsive max width: fills screen at 250px, capped at 320px on larger
           width: '100%',
           maxWidth: 'min(320px, 90vw)',
         }}
@@ -105,16 +159,66 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
                   key={key}
                   data-virtual-key="true"
                   onPointerDown={(e) => {
-                    e.preventDefault(); // Prevents input blur
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    wasTriggeredByPointer.current = true;
+                    activePressedKeyRef.current = key;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setActiveRect(rect);
+                    startRepeat(key);
+                    try {
+                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                    } catch (err) {}
+                  }}
+                  onPointerUp={(e) => {
+                    e.preventDefault();
+                    stopRepeat();
+                    activePressedKeyRef.current = null;
+                    setActiveRect(null);
+                    try {
+                      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                    } catch (err) {}
+                  }}
+                  onPointerCancel={(e) => {
+                    e.preventDefault();
+                    stopRepeat();
+                    activePressedKeyRef.current = null;
+                    setActiveRect(null);
+                  }}
+                  onPointerLeave={(e) => {
+                    e.preventDefault();
+                    stopRepeat();
+                    activePressedKeyRef.current = null;
+                    setActiveRect(null);
+                  }}
+                  onPointerMove={(e) => {
+                    if (activePressedKeyRef.current !== key || !activeRect) return;
+                    const x = e.clientX;
+                    const y = e.clientY;
+                    const buffer = 20;
+                    if (
+                      x < activeRect.left - buffer ||
+                      x > activeRect.right + buffer ||
+                      y < activeRect.top - buffer ||
+                      y > activeRect.bottom + buffer
+                    ) {
+                      stopRepeat();
+                      activePressedKeyRef.current = null;
+                      setActiveRect(null);
+                    }
                   }}
                   onClick={(e) => {
                     e.preventDefault();
+                    if (wasTriggeredByPointer.current) {
+                      wasTriggeredByPointer.current = false;
+                      return;
+                    }
                     handleKeyPress(key);
                   }}
                   whileTap={{
-                    scale: 0.92,
-                    x: 1,
-                    y: 1,
+                    scale: 0.95,
+                    x: 2,
+                    y: 2,
                     backgroundColor: 'var(--accent)',
                     color: '#FFFFFF',
                     boxShadow: '0px 0px 0 var(--ink)',
@@ -122,7 +226,6 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
                   transition={{ duration: 0.08 }}
                   style={{
                     flex: '1',
-                    // Responsive height: scales down gracefully on small screens
                     height: 'clamp(38px, 12vw, 56px)',
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -132,7 +235,6 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
                     border: '2px solid var(--ink)',
                     boxShadow: '2px 2px 0 var(--ink)',
                     fontFamily: 'var(--font-heading)',
-                    // Responsive font: readable at 250px, normal at 400px+
                     fontSize: 'clamp(0.85rem, 4.5vw, 1.25rem)',
                     fontWeight: 'bold',
                     cursor: 'pointer',

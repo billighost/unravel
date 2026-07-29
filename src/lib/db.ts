@@ -566,7 +566,7 @@ export async function updateDeviceStreak(deviceId: string): Promise<DeviceStreak
 
   const getYesterdayStr = () => {
     const d = new Date();
-    d.setDate(d.getDate() - 1);
+    d.setTime(d.getTime() - 24 * 60 * 60 * 1000);
     return d.toISOString().split('T')[0];
   };
   const yesterday = getYesterdayStr();
@@ -630,11 +630,18 @@ export async function updateDeviceStreak(deviceId: string): Promise<DeviceStreak
 
   const row = rows[0] as any;
   if (row.last_completed_date === today) {
-    return row as DeviceStreakRecord;
+    return {
+      device_id: row.device_id,
+      current_streak: Number(row.current_streak),
+      longest_streak: Number(row.longest_streak),
+      last_completed_date: row.last_completed_date,
+      username: row.username,
+    };
   }
 
-  const newCurrent = row.last_completed_date === yesterday ? row.current_streak + 1 : 1;
-  const newLongest = Math.max(row.longest_streak, newCurrent);
+  // If last_completed_date is yesterday, increment streak; otherwise reset to 1
+  const newCurrent = row.last_completed_date === yesterday ? Number(row.current_streak) + 1 : 1;
+  const newLongest = Math.max(Number(row.longest_streak), newCurrent);
 
   if (username) {
     await sql`
@@ -665,16 +672,32 @@ export async function updateDeviceStreak(deviceId: string): Promise<DeviceStreak
 export async function getDeviceStreak(deviceId: string): Promise<DeviceStreakRecord> {
   const sql = getSql();
   const username = await getAssociatedUsername(deviceId);
+  const today = new Date().toISOString().split('T')[0];
+  
+  const getYesterdayStr = () => {
+    const d = new Date();
+    d.setTime(d.getTime() - 24 * 60 * 60 * 1000);
+    return d.toISOString().split('T')[0];
+  };
+  const yesterday = getYesterdayStr();
+
+  const sanitizeStreak = (s: DeviceStreakRecord): DeviceStreakRecord => {
+    if (s.last_completed_date !== today && s.last_completed_date !== yesterday) {
+      return { ...s, current_streak: 0 };
+    }
+    return s;
+  };
 
   if (!sql) {
     let key = username ? `user:${username}` : deviceId;
-    return globalMemoryStore.deviceStreaks.get(key) || {
+    const raw = globalMemoryStore.deviceStreaks.get(key) || {
       device_id: deviceId,
       current_streak: 0,
       longest_streak: 0,
       last_completed_date: null,
       username: username || null,
     };
+    return sanitizeStreak(raw);
   }
 
   let rows;
@@ -687,7 +710,15 @@ export async function getDeviceStreak(deviceId: string): Promise<DeviceStreakRec
   if (rows.length === 0) {
     return { device_id: deviceId, current_streak: 0, longest_streak: 0, last_completed_date: null, username: username || null };
   }
-  return rows[0] as DeviceStreakRecord;
+  
+  const rawRow = rows[0] as any;
+  return sanitizeStreak({
+    device_id: rawRow.device_id,
+    current_streak: Number(rawRow.current_streak),
+    longest_streak: Number(rawRow.longest_streak),
+    last_completed_date: rawRow.last_completed_date,
+    username: rawRow.username,
+  });
 }
 
 export async function incrementViewCount(id: string): Promise<void> {
@@ -892,7 +923,7 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics> {
       daily_activity: daily7,
       source_mode_stats: Array.from(modeMap.entries()).map(([source_mode, count]) => ({ source_mode, count })),
       top_streaks: streaks,
-      reported_creations: creations.filter(c => c.report_count > 0).sort((a, b) => b.report_count - a.report_count).slice(0, 20),
+      reported_creations: creations.filter(c => c.report_count > 0).sort((a, b) => b.report_count - a.report_count).slice(0, 50),
     };
   }
 
@@ -902,7 +933,7 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics> {
     sql`SELECT * FROM daily_activity ORDER BY date DESC LIMIT 7`,
     sql`SELECT source_mode, count FROM source_mode_stats ORDER BY count DESC`,
     sql`SELECT username, device_id, current_streak, longest_streak FROM device_streaks ORDER BY longest_streak DESC LIMIT 10`,
-    sql`SELECT id, device_id, created_at, thumbnail_url, source_mode, report_count, is_hidden, is_public, username FROM creations WHERE report_count > 0 AND is_hidden = FALSE ORDER BY report_count DESC LIMIT 20`,
+    sql`SELECT id, device_id, created_at, thumbnail_url, source_mode, report_count, is_hidden, is_public, username FROM creations WHERE report_count > 0 ORDER BY report_count DESC LIMIT 50`,
   ]);
 
   const counters: Record<string, number> = {};
@@ -918,7 +949,7 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics> {
     total_challenge_completions: counters['total_challenge_completions'] || 0,
     total_views: counters['total_views'] || 0,
     daily_activity: dailyRows as any[],
-    source_mode_stats: modeRows as any[],
+    source_mode_stats: modeRows.map((r: any) => ({ source_mode: r.source_mode, count: Number(r.count) })),
     top_streaks: streakRows.map((r: any) => ({ username: r.username, device_id: r.device_id, current_streak: Number(r.current_streak), longest_streak: Number(r.longest_streak) })),
     reported_creations: reportedRows as any[],
   };
@@ -927,35 +958,57 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics> {
 export async function adminListUsers(limit = 50, offset = 0): Promise<Array<{ username: string; email: string | null; created_at: string; creation_count: number; current_streak: number }>> {
   const sql = getSql();
 
+  const today = new Date().toISOString().split('T')[0];
+  const getYesterdayStr = () => {
+    const d = new Date();
+    d.setTime(d.getTime() - 24 * 60 * 60 * 1000);
+    return d.toISOString().split('T')[0];
+  };
+  const yesterday = getYesterdayStr();
+
   if (!sql) {
-    return Array.from(globalMemoryStore.accounts.values()).slice(offset, offset + limit).map(a => ({
-      username: a.username,
-      email: null,
-      created_at: a.created_at,
-      creation_count: Array.from(globalMemoryStore.creations.values()).filter(c => c.username === a.username).length,
-      current_streak: globalMemoryStore.deviceStreaks.get(`user:${a.username}`)?.current_streak || 0,
-    }));
+    return Array.from(globalMemoryStore.accounts.values()).slice(offset, offset + limit).map(a => {
+      const streak = globalMemoryStore.deviceStreaks.get(`user:${a.username}`);
+      let currentStreak = streak?.current_streak || 0;
+      if (streak && streak.last_completed_date !== today && streak.last_completed_date !== yesterday) {
+        currentStreak = 0;
+      }
+      return {
+        username: a.username,
+        email: null,
+        created_at: a.created_at,
+        creation_count: Array.from(globalMemoryStore.creations.values()).filter(c => c.username === a.username).length,
+        current_streak: currentStreak,
+      };
+    });
   }
 
   const rows = await sql`
     SELECT 
       a.username, a.created_at,
       COUNT(DISTINCT c.id) AS creation_count,
-      COALESCE(ds.current_streak, 0) AS current_streak
+      COALESCE(ds.current_streak, 0) AS current_streak,
+      ds.last_completed_date
     FROM accounts a
     LEFT JOIN creations c ON c.username = a.username
     LEFT JOIN device_streaks ds ON ds.username = a.username
-    GROUP BY a.username, a.created_at, ds.current_streak
+    GROUP BY a.username, a.created_at, ds.current_streak, ds.last_completed_date
     ORDER BY a.created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
-  return rows.map((r: any) => ({
-    username: r.username,
-    email: null, // Removed email
-    created_at: r.created_at,
-    creation_count: Number(r.creation_count),
-    current_streak: Number(r.current_streak),
-  }));
+  return rows.map((r: any) => {
+    let currentStreak = Number(r.current_streak);
+    if (r.last_completed_date && r.last_completed_date !== today && r.last_completed_date !== yesterday) {
+      currentStreak = 0;
+    }
+    return {
+      username: r.username,
+      email: null, // Removed email
+      created_at: r.created_at,
+      creation_count: Number(r.creation_count),
+      current_streak: currentStreak,
+    };
+  });
 }
 
 export async function adminToggleCreationVisibility(id: string, hidden: boolean): Promise<void> {
