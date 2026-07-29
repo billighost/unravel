@@ -81,7 +81,12 @@ async function main() {
       // Use sql.query() for dynamic SQL content loaded from files.
       // Tagged templates can't be used here because the SQL is a runtime string.
       // Split on semicolons to handle multi-statement files.
-      const statements = content
+      // Strip single-line comments (-- ...) and multi-line comments (/* ... */)
+      const sqlWithoutComments = content
+        .replace(/--.*$/gm, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+      const statements = sqlWithoutComments
         .split(';')
         .map(s => s.trim())
         .filter(s => s.length > 0);

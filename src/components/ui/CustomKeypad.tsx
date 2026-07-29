@@ -12,12 +12,45 @@ interface CustomKeypadProps {
   maxLength?: number;
 }
 
+const themeStyles = {
+  classic: {
+    background: 'var(--surface)',
+    ink: 'var(--ink)',
+    bg: 'var(--bg)',
+    accent: 'var(--accent)',
+    text: 'var(--ink)',
+  },
+  matrix: {
+    background: '#050e05',
+    ink: '#00ff00',
+    bg: '#0a1c0a',
+    accent: '#33ff33',
+    text: '#00ff00',
+  },
+  cyberpunk: {
+    background: '#000000',
+    ink: '#ffd700',
+    bg: '#111111',
+    accent: '#ff0055',
+    text: '#ffd700',
+  },
+  pink: {
+    background: '#fff0f5',
+    ink: '#ff1493',
+    bg: '#ffe4e1',
+    accent: '#ff69b4',
+    text: '#ff1493',
+  },
+};
+
 export const CustomKeypad: React.FC<CustomKeypadProps> = ({
   value,
   onChange,
   onDone,
   maxLength = 6,
 }) => {
+  const [keyboardTheme, setKeyboardTheme] = useState<'classic' | 'matrix' | 'cyberpunk' | 'pink'>('classic');
+
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const wasTriggeredByPointer = useRef(false);
@@ -29,6 +62,16 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
   useEffect(() => {
     valueRef.current = value;
   }, [value]);
+
+  // Load preferences from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedTheme = localStorage.getItem('keyboard-theme') as any;
+      if (storedTheme && ['classic', 'matrix', 'cyberpunk', 'pink'].includes(storedTheme)) {
+        setKeyboardTheme(storedTheme);
+      }
+    }
+  }, []);
 
   // Clean up timers on unmount
   useEffect(() => {
@@ -44,6 +87,8 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
     ['7', '8', '9'],
     ['BACKSPACE', '0', 'DONE'],
   ];
+
+  const activeTheme = themeStyles[keyboardTheme];
 
   const triggerHaptic = () => {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -95,6 +140,18 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
     }
   };
 
+  const handleThemeChange = () => {
+    soundEngine.playUIClick();
+    const themes: ('classic' | 'matrix' | 'cyberpunk' | 'pink')[] = ['classic', 'matrix', 'cyberpunk', 'pink'];
+    const nextIndex = (themes.indexOf(keyboardTheme) + 1) % themes.length;
+    const nextTheme = themes[nextIndex];
+    setKeyboardTheme(nextTheme);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('keyboard-theme', nextTheme);
+    }
+    triggerHaptic();
+  };
+
   return (
     <motion.div
       initial={{ y: '100%' }}
@@ -106,8 +163,8 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: 'var(--surface)',
-        borderTop: '4px solid var(--ink)',
+        backgroundColor: activeTheme.background,
+        borderTop: `4px solid ${activeTheme.ink}`,
         boxShadow: '0 -4px 16px rgba(0,0,0,0.15)',
         padding: 'clamp(0.4rem, 1.5vw, 0.75rem) clamp(0.25rem, 2vw, 0.5rem) calc(clamp(0.4rem, 1.5vw, 0.75rem) + env(safe-area-inset-bottom)) clamp(0.25rem, 2vw, 0.5rem)',
         zIndex: 9999,
@@ -119,6 +176,60 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
         alignItems: 'center',
       }}
     >
+      {/* Utility Bar */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: `2px solid ${activeTheme.ink}`,
+          paddingBottom: 'clamp(0.2rem, 0.6vw, 0.4rem)',
+          marginBottom: 'clamp(0.1rem, 0.4vw, 0.2rem)',
+          width: '100%',
+          maxWidth: 'min(320px, 90vw)',
+          gap: '0.4rem',
+        }}
+      >
+        <button
+          onClick={handleThemeChange}
+          style={{
+            padding: '2px 8px',
+            backgroundColor: activeTheme.bg,
+            border: `2px solid ${activeTheme.ink}`,
+            color: activeTheme.text,
+            fontSize: '9px',
+            fontFamily: 'var(--font-heading)',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            textTransform: 'uppercase',
+            borderRadius: 0,
+          }}
+        >
+          🎨 {keyboardTheme}
+        </button>
+
+        <button
+          onClick={() => {
+            soundEngine.playUIClick();
+            triggerHaptic();
+            onChange('');
+          }}
+          style={{
+            padding: '2px 8px',
+            backgroundColor: activeTheme.bg,
+            border: `2px solid ${activeTheme.ink}`,
+            color: activeTheme.text,
+            fontSize: '9px',
+            fontFamily: 'var(--font-heading)',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            borderRadius: 0,
+          }}
+        >
+          🗑️ CLEAR
+        </button>
+      </div>
+
       <div
         style={{
           display: 'flex',
@@ -141,8 +252,8 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
             {row.map((key) => {
               let displayKey = key;
               let icon: React.ReactNode = null;
-              let bg = 'var(--bg)';
-              let color = 'var(--ink)';
+              let bg = activeTheme.bg;
+              let color = activeTheme.text;
 
               if (key === 'BACKSPACE') {
                 displayKey = '';
@@ -150,7 +261,7 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
               } else if (key === 'DONE') {
                 displayKey = '';
                 icon = <Check size={18} />;
-                bg = 'var(--accent)';
+                bg = activeTheme.accent;
                 color = '#FFFFFF';
               }
 
@@ -219,9 +330,9 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
                     scale: 0.95,
                     x: 2,
                     y: 2,
-                    backgroundColor: 'var(--accent)',
+                    backgroundColor: activeTheme.accent,
                     color: '#FFFFFF',
-                    boxShadow: '0px 0px 0 var(--ink)',
+                    boxShadow: `0px 0px 0 ${activeTheme.ink}`,
                   }}
                   transition={{ duration: 0.08 }}
                   style={{
@@ -232,8 +343,8 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
                     justifyContent: 'center',
                     backgroundColor: bg,
                     color: color,
-                    border: '2px solid var(--ink)',
-                    boxShadow: '2px 2px 0 var(--ink)',
+                    border: `2px solid ${activeTheme.ink}`,
+                    boxShadow: `2px 2px 0 ${activeTheme.ink}`,
                     fontFamily: 'var(--font-heading)',
                     fontSize: 'clamp(0.85rem, 4.5vw, 1.25rem)',
                     fontWeight: 'bold',
