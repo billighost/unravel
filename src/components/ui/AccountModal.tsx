@@ -600,19 +600,24 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
               {/* Mode Toggle Link */}
               <div style={{ textAlign: 'center', marginTop: '0.25rem' }}>
-                <a
-                  href="#"
+                <button
+                  type="button"
                   onClick={handleToggleMode}
                   style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
                     fontSize: '0.75rem',
                     fontFamily: 'var(--font-heading)',
                     color: 'var(--accent)',
                     textDecoration: 'none',
                     fontWeight: 'bold',
+                    display: 'inline-block',
                   }}
                 >
                   {mode === 'signup' ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
-                </a>
+                </button>
               </div>
             </>
           )}

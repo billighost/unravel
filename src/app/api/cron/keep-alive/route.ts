@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 
+export const runtime = 'edge';
+
 /**
  * Neon DB Keep-Alive Cron Endpoint
  * 

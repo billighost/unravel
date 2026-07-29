@@ -3,6 +3,7 @@
 import React, { useEffect, useState, use } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCcw, Share2, Sparkles, AlertTriangle, Check, Flame, RefreshCw, X, Eye } from 'lucide-react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
@@ -30,6 +31,7 @@ interface ChallengePageProps {
 }
 
 export default function ChallengePage({ params }: ChallengePageProps) {
+  const router = useRouter();
   const { id } = use(params);
   const [creation, setCreation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -275,7 +277,7 @@ export default function ChallengePage({ params }: ChallengePageProps) {
         soundEngine.playSuccessChime();
         await new Promise((resolve) => setTimeout(resolve, 1500));
         setRemixSuccess(false);
-        window.location.href = `/challenge/${data.id}`;
+        router.push(`/challenge/${data.id}`);
       } else {
         showToast("Couldn't remix this artwork — try again", 'error');
       }

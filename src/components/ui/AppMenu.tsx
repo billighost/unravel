@@ -11,6 +11,7 @@ import { Button } from './Button';
 import { AccountModal } from './AccountModal';
 import { useAppStore } from '@/store/useAppStore';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface AppMenuProps {
   onOpenGallery?: () => void;
@@ -23,6 +24,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
   onNewCreation,
   showNewOption = true,
 }) => {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -128,7 +130,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
   const handleDailyChallengeClick = async () => {
     soundEngine.playUIClick();
     if (challengeId) {
-      window.location.href = `/challenge/${challengeId}`;
+      router.push(`/challenge/${challengeId}`);
       setIsOpen(false);
     } else {
       setLoadingChallenge(true);
@@ -139,7 +141,7 @@ export const AppMenu: React.FC<AppMenuProps> = ({
         });
         const data = await res.json();
         if (data.challenge && data.challenge.id) {
-          window.location.href = `/challenge/${data.challenge.id}`;
+          router.push(`/challenge/${data.challenge.id}`);
           setIsOpen(false);
         } else {
           showToast("No daily picture available right now — try again later", 'info');

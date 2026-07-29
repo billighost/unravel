@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import { createAccount, getAccountByUsername, associateDeviceWithAccount, migrateDeviceDataToAccount, isAdminUsername, verifyAdminSpecialCode } from '@/lib/db';
 import { rateLimit } from '@/lib/ratelimit';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RotateCcw, Download, Plus, Images, Square, Sparkles, Check } from 'lucide-react';
 import { qualityTierManager } from '@/lib/qualityTier';
@@ -35,6 +36,7 @@ const CubeCanvas = dynamic(
 );
 
 export default function Home() {
+  const router = useRouter();
   const mode = useAppStore((state) => state.mode);
   const isDisturbed = useAppStore((state) => state.isDisturbed);
   const setMode = useAppStore((state) => state.setMode);
@@ -537,28 +539,38 @@ export default function Home() {
               }}
             >
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'center', width: '100%', maxWidth: '400px' }}>
-                <a href="/api/daily-challenge-redirect" onClick={async (e) => {
-                  e.preventDefault();
-                  soundEngine.playUIClick();
-                  try {
-                    const deviceId = getDeviceId();
-                    const res = await fetch('/api/daily-challenge', { headers: { 'x-device-id': deviceId } });
-                    const data = await res.json();
-                    if (data.challenge && data.challenge.id) {
-                      window.location.href = `/challenge/${data.challenge.id}`;
-                    } else {
-                      showToast("No daily picture available right now — try again later", 'info');
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    soundEngine.playUIClick();
+                    try {
+                      const deviceId = getDeviceId();
+                      const res = await fetch('/api/daily-challenge', { headers: { 'x-device-id': deviceId } });
+                      const data = await res.json();
+                      if (data.challenge && data.challenge.id) {
+                        router.push(`/challenge/${data.challenge.id}`);
+                      } else {
+                        showToast("No daily picture available right now — try again later", 'info');
+                        setMode('select');
+                      }
+                    } catch (_) {
+                      showToast("Couldn't load today's picture — check your connection", 'error');
                       setMode('select');
                     }
-                  } catch (_) {
-                    showToast("Couldn't load today's picture — check your connection", 'error');
-                    setMode('select');
-                  }
-                }} style={{ textDecoration: 'none', display: 'inline-flex', flex: '1 1 120px' }}>
-                  <Button variant="secondary" style={{ fontSize: '0.85rem', padding: '0.85rem 1.25rem', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                    <Sparkles size={16} color="var(--accent)" /> <span>TODAY'S PICTURE</span>
-                  </Button>
-                </a>
+                  }}
+                  style={{
+                    fontSize: '0.85rem',
+                    padding: '0.85rem 1.25rem',
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    flex: '1 1 120px'
+                  }}
+                >
+                  <Sparkles size={16} color="var(--accent)" /> <span>TODAY'S PICTURE</span>
+                </Button>
 
                 <Button
                   variant="primary"
