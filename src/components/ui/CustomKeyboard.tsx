@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Delete, CornerDownLeft, ArrowUp } from 'lucide-react';
+import { Delete, CornerDownLeft, ArrowUp, Check } from 'lucide-react';
+import { soundEngine } from '@/lib/audio/soundEngine';
 
 interface CustomKeyboardProps {
   value: string;
@@ -22,20 +23,35 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
   maxLines = 1,
 }) => {
   const [isShift, setIsShift] = useState(true); // default capital since pixel font looks great in caps
+  const [showSymbols, setShowSymbols] = useState(false);
 
   const supportsMultiLine = maxLines > 1;
 
-  const rows = [
+  const letterRows = [
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
     ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
     ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
     ['SHIFT', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'BACKSPACE'],
-    // Replace '-' with 'RETURN' when multi-line is enabled
     supportsMultiLine
-      ? ['.', ',', '!', '?', 'RETURN', "'", 'SPACE', 'DONE']
-      : ['.', ',', '!', '?', '-', "'", 'SPACE', 'DONE'],
+      ? ['?123', '.', ',', '!', '?', 'RETURN', "'", 'SPACE', 'DONE']
+      : ['?123', '.', ',', '!', '?', '-', "'", 'SPACE', 'DONE'],
   ];
 
+  const symbolRows = [
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    ['@', '#', '$', '_', '&', '-', '+', '(', ')', '/'],
+    ['*', '"', "'", ':', ';', '!', '?', '\\', '|'],
+    ['abc', '<', '>', '=', '[', ']', '{', '}', 'BACKSPACE'],
+    supportsMultiLine
+      ? ['abc', '.', ',', '@', '#', 'RETURN', '_', 'SPACE', 'DONE']
+      : ['abc', '.', ',', '@', '#', '-', '_', 'SPACE', 'DONE'],
+  ];
+
+  const rows = showSymbols ? symbolRows : letterRows;
+
   const handleKeyPress = (key: string) => {
+    soundEngine.playTypeClick();
+
     if (key === 'BACKSPACE') {
       onChange(value.slice(0, -1));
     } else if (key === 'SPACE') {
@@ -46,15 +62,18 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
       setIsShift(!isShift);
     } else if (key === 'DONE') {
       if (onDone) onDone();
+    } else if (key === '?123') {
+      setShowSymbols(true);
+    } else if (key === 'abc') {
+      setShowSymbols(false);
     } else if (key === 'RETURN') {
-      // Only allow if we haven't exceeded max lines
       const currentLineCount = (value.match(/\n/g) || []).length + 1;
       if (currentLineCount < maxLines) {
         onChange(value + '\n');
       }
     } else {
       if (value.length < maxLength) {
-        onChange(value + (isShift ? key.toUpperCase() : key.toLowerCase()));
+        onChange(value + (isShift && !showSymbols ? key.toUpperCase() : key.toLowerCase()));
       }
     }
   };
@@ -73,7 +92,6 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
         backgroundColor: 'var(--surface)',
         borderTop: '4px solid var(--ink)',
         boxShadow: '0 -4px 16px rgba(0,0,0,0.15)',
-        // Responsive padding — safe area + clamp so it works at 250px+
         padding: 'clamp(0.4rem, 1.5vw, 0.75rem) clamp(0.25rem, 1.5vw, 0.5rem) calc(clamp(0.4rem, 1.5vw, 0.75rem) + env(safe-area-inset-bottom)) clamp(0.25rem, 1.5vw, 0.5rem)',
         zIndex: 9999,
         display: 'flex',
@@ -94,7 +112,7 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
           }}
         >
           {row.map((key) => {
-            const isSpecial = ['SHIFT', 'BACKSPACE', 'SPACE', 'DONE', 'RETURN'].includes(key);
+            const isSpecial = ['SHIFT', 'BACKSPACE', 'SPACE', 'DONE', 'RETURN', '?123', 'abc'].includes(key);
             let displayKey = key;
             let icon: React.ReactNode = null;
 
@@ -106,14 +124,16 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
               icon = <Delete size={14} />;
             } else if (key === 'DONE') {
               displayKey = 'DONE';
-              icon = <CornerDownLeft size={12} style={{ marginLeft: '2px' }} />;
+              icon = <Check size={12} style={{ marginLeft: '2px' }} />;
             } else if (key === 'RETURN') {
-              displayKey = '⏎';
-              icon = null;
+              displayKey = '';
+              icon = <CornerDownLeft size={14} />;
             } else if (key === 'SPACE') {
               displayKey = 'SPACE';
+            } else if (key === '?123' || key === 'abc') {
+              displayKey = key;
             } else {
-              displayKey = isShift ? key.toUpperCase() : key.toLowerCase();
+              displayKey = isShift && !showSymbols ? key.toUpperCase() : key.toLowerCase();
             }
 
             // Key layout styles
@@ -138,10 +158,13 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
               maxWidth = 'min(40px, 9vw)';
               bg = 'var(--ink)';
               color = '#FFFFFF';
+            } else if (key === '?123' || key === 'abc') {
+              flex = '1.5';
+              maxWidth = 'min(64px, 14vw)';
             }
 
             return (
-              <button
+              <motion.button
                 key={key}
                 data-virtual-key="true"
                 onPointerDown={(e) => {
@@ -151,10 +174,18 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                   e.preventDefault();
                   handleKeyPress(key);
                 }}
+                whileTap={{
+                  scale: 0.92,
+                  x: 1,
+                  y: 1,
+                  backgroundColor: 'var(--accent)',
+                  color: '#FFFFFF',
+                  boxShadow: '0px 0px 0 var(--ink)',
+                }}
+                transition={{ duration: 0.08 }}
                 style={{
                   flex,
                   maxWidth,
-                  // Responsive height: works from 250px screen width up
                   height: 'clamp(30px, 8.5vw, 42px)',
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -164,7 +195,6 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                   border: '2px solid var(--ink)',
                   boxShadow: '2px 2px 0 var(--ink)',
                   fontFamily: 'var(--font-heading)',
-                  // Responsive font size: readable at 250px, normal at 400px+
                   fontSize: 'clamp(0.55rem, 3vw, 0.9rem)',
                   fontWeight: 'bold',
                   cursor: 'pointer',
@@ -176,7 +206,7 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                 }}
               >
                 {icon ? icon : displayKey}
-              </button>
+              </motion.button>
             );
           })}
         </div>

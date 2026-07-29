@@ -241,7 +241,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     }
   };
 
-  const PinSlots: React.FC<{ value: string; label: string; field: 'pin' | 'confirmPin'; inputRef: React.RefObject<HTMLInputElement | null> }> = ({ value, label, field, inputRef }) => {
+  const PinSlots: React.FC<{ value: string; label: string; field: 'pin' | 'confirmPin' | 'specialCode'; inputRef: React.RefObject<HTMLInputElement | null> }> = ({ value, label, field, inputRef }) => {
     const isFocused = activeField === field;
 
     const handleFocusSlots = () => {
@@ -368,7 +368,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
                   Progress and streaks are saved server-side.
                 </p>
-                <div className="font-heading" style={{ fontSize: '1.15rem', color: 'var(--accent)', marginTop: '0.85rem', wordBreak: 'break-all' }}>
+                <div className="font-heading" style={{ fontSize: '1.15rem', color: 'var(--accent)', marginTop: '0.85rem', wordBreak: 'break-all', textTransform: 'none' }}>
                   {currentUsername}
                 </div>
               </div>
@@ -517,32 +517,21 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.4rem' }}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', position: 'relative', marginTop: '0.4rem' }}
                     >
-                      <label className="font-heading" style={{ fontSize: '0.75rem', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        <ShieldCheck size={13} /> SPECIAL CODE
-                      </label>
                       <input
                         ref={specialCodeRef}
-                        type="text"
-                        placeholder="Enter special access code"
-                        value={specialCode}
-                        onChange={(e) => setSpecialCode(e.target.value)}
-                        onFocus={() => setActiveField('specialCode')}
-                        inputMode={isTouchDevice ? 'none' : 'numeric'}
+                        type="password"
                         pattern="[0-9]*"
-                        readOnly={isTouchDevice}
-                        style={{
-                          width: '100%',
-                          padding: '0.65rem 0.75rem',
-                          backgroundColor: 'rgba(255,59,48,0.05)',
-                          border: '2px solid var(--accent)',
-                          fontFamily: 'var(--font-body)',
-                          fontSize: '0.8rem',
-                          outline: 'none',
-                          letterSpacing: '0.15em',
+                        maxLength={6}
+                        value={specialCode}
+                        onChange={(e) => {
+                          if (/^\d*$/.test(e.target.value)) setSpecialCode(e.target.value);
                         }}
+                        onFocus={() => setActiveField('specialCode')}
+                        style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
                       />
+                      <PinSlots value={specialCode} label="SPECIAL ACCESS CODE" field="specialCode" inputRef={specialCodeRef} />
                     </motion.div>
                   )}
                 </div>

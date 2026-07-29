@@ -321,7 +321,6 @@ export const TypeMode: React.FC = () => {
       <CustomKeyboard
         value={text}
         onChange={handleTextChange}
-        onDone={handleConvert}
         maxLength={MAX_CHARS}
         maxLines={MAX_LINES}
       />

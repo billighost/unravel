@@ -3,6 +3,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Delete, Check } from 'lucide-react';
+import { soundEngine } from '@/lib/audio/soundEngine';
 
 interface CustomKeypadProps {
   value: string;
@@ -25,6 +26,8 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
   ];
 
   const handleKeyPress = (key: string) => {
+    soundEngine.playTypeClick();
+
     if (key === 'BACKSPACE') {
       onChange(value.slice(0, -1));
     } else if (key === 'DONE') {
@@ -98,7 +101,7 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
               }
 
               return (
-                <button
+                <motion.button
                   key={key}
                   data-virtual-key="true"
                   onPointerDown={(e) => {
@@ -108,6 +111,15 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
                     e.preventDefault();
                     handleKeyPress(key);
                   }}
+                  whileTap={{
+                    scale: 0.92,
+                    x: 1,
+                    y: 1,
+                    backgroundColor: 'var(--accent)',
+                    color: '#FFFFFF',
+                    boxShadow: '0px 0px 0 var(--ink)',
+                  }}
+                  transition={{ duration: 0.08 }}
                   style={{
                     flex: '1',
                     // Responsive height: scales down gracefully on small screens
@@ -132,7 +144,7 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
                   }}
                 >
                   {icon ? icon : displayKey}
-                </button>
+                </motion.button>
               );
             })}
           </div>

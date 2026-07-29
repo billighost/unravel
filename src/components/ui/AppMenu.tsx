@@ -245,8 +245,8 @@ export const AppMenu: React.FC<AppMenuProps> = ({
           }}
         >
           <User size={18} color="var(--ink)" />
-          <span className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
-            {username ? `ACCOUNT: ${username.toUpperCase()}` : 'SAVE YOUR PROGRESS'}
+          <span className="font-heading" style={{ fontSize: '0.85rem', color: 'var(--ink)', textTransform: username ? 'none' : 'uppercase' }}>
+            {username ? `ACCOUNT: ${username}` : 'SAVE YOUR PROGRESS'}
           </span>
         </button>
 

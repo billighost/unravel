@@ -1,7 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import fs from 'fs';
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ path: '.env.local' });
 
 async function run() {
   const connectionString = process.env.DATABASE_URL;
@@ -24,7 +24,7 @@ async function run() {
     console.log(`\nExecuting statement ${i + 1}/${statements.length}:`);
     console.log(stmt);
     try {
-      await sql(stmt);
+      await sql.query(stmt);
       console.log('✅ Success');
     } catch (err) {
       console.error('❌ Error executing statement:', err);
