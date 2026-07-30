@@ -2,9 +2,17 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || 
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 
+     process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://unravel-3d.vercel.app')
+  ),
   title: 'UNRAVEL — Tactile 3D Generative Pixel Canvas',
   description: 'Turn photos, drawings, and text into interactive 3D physical cube grid art.',
   manifest: '/manifest.json',
+  alternates: {
+    canonical: '/',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -20,6 +28,28 @@ export const metadata: Metadata = {
     apple: [
       { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     ],
+  },
+  openGraph: {
+    title: 'UNRAVEL — Tactile 3D Generative Pixel Canvas',
+    description: 'Turn photos, drawings, and text into interactive 3D physical cube grid art.',
+    url: '/',
+    siteName: 'UNRAVEL',
+    images: [
+      {
+        url: '/icons/apple-touch-icon.png',
+        width: 180,
+        height: 180,
+        alt: 'UNRAVEL Logo',
+        type: 'image/png',
+      },
+    ],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'UNRAVEL — Tactile 3D Generative Pixel Canvas',
+    description: 'Turn photos, drawings, and text into interactive 3D physical cube grid art.',
+    images: ['/icons/apple-touch-icon.png'],
   },
 };
 

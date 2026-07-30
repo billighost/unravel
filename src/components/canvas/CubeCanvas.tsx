@@ -72,15 +72,9 @@ function drawBrandIconToCanvas(
 
 interface CubeCanvasProps {
   onExportReady?: (exportFn: (options?: { transparent?: boolean }) => void) => void;
-  initialDisturbedPositions?: number[] | null;
-  shouldDisperseImmediately?: boolean;
 }
 
-export const CubeCanvas: React.FC<CubeCanvasProps> = ({
-  onExportReady,
-  initialDisturbedPositions,
-  shouldDisperseImmediately = false,
-}) => {
+export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const gridData = useAppStore((state) => state.gridData);
   const mode = useAppStore((state) => state.mode);
@@ -398,13 +392,6 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({
     const physics = new CubePhysicsEngine(cols, rows, cubeSize, gap);
     physics.setRestSpeedThreshold(qualityConfig.restSpeedThreshold);
     physics.initFromData(cols, rows, colors, cubeSize, gap);
-
-    if (initialDisturbedPositions && initialDisturbedPositions.length > 0) {
-      physics.restoreDisturbedState(initialDisturbedPositions);
-    } else if (shouldDisperseImmediately) {
-      physics.triggerDisperse();
-    }
-
     physicsRef.current = physics;
     (window as any).__unravelPhysics = physics;
 

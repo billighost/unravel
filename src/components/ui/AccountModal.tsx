@@ -429,7 +429,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     textAlign: 'center',
                     fontFamily: 'var(--font-body)',
                   }}>
-                    Complete today's picture to start your streak! 🔥
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
+                      Complete today's picture to start your streak! <Flame size={14} color="var(--accent)" fill="var(--accent)" style={{ display: 'inline' }} />
+                    </span>
                   </div>
                 )}
               </div>

@@ -2,8 +2,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Delete, CornerDownLeft, ArrowUp, Check } from 'lucide-react';
+import { Delete, CornerDownLeft, ArrowUp, Check, Palette, Keyboard, Mic, Trash2 } from 'lucide-react';
 import { soundEngine } from '@/lib/audio/soundEngine';
+import { showToast } from '@/components/ui/Toast';
 
 interface CustomKeyboardProps {
   value: string;
@@ -58,6 +59,10 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
   const [keyboardTheme, setKeyboardTheme] = useState<'classic' | 'matrix' | 'cyberpunk' | 'pink'>('classic');
   const [isAlphabetical, setIsAlphabetical] = useState(false);
   const [isDictating, setIsDictating] = useState(false);
+  const [interimTextState, setInterimTextState] = useState('');
+
+  const startTextRef = useRef('');
+  const userStoppedRef = useRef(true);
 
   const [activePressedKey, setActivePressedKey] = useState<{
     key: string;
@@ -270,12 +275,14 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
     triggerHaptic();
 
     if (isDictating) {
+      userStoppedRef.current = true;
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
         } catch (e) {}
       }
       setIsDictating(false);
+      setInterimTextState('');
       return;
     }
 
@@ -286,9 +293,15 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
       return;
     }
 
+    // Initialize
+    startTextRef.current = valueRef.current;
+    userStoppedRef.current = false;
+    setInterimTextState('');
+
     const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
+    recognition.lang = navigator.language || 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
     recognitionRef.current = recognition;
 
@@ -297,23 +310,60 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
     };
 
     recognition.onend = () => {
-      setIsDictating(false);
-    };
-
-    recognition.onresult = (event: any) => {
-      const resultText = event.results[0][0].transcript;
-      if (resultText) {
-        onChange(valueRef.current + resultText);
+      // If the user didn't stop it explicitly, auto-restart to make it robust
+      if (!userStoppedRef.current) {
+        try {
+          recognition.start();
+        } catch (err) {
+          console.warn('SpeechRecognition auto-restart failed:', err);
+          setIsDictating(false);
+        }
+      } else {
+        setIsDictating(false);
       }
     };
 
-    recognition.onerror = () => {
-      setIsDictating(false);
+    recognition.onresult = (event: any) => {
+      let finalText = '';
+      let interimText = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalText += result[0].transcript;
+        } else {
+          interimText += result[0].transcript;
+        }
+      }
+
+      // Update real-time display state
+      setInterimTextState(interimText || finalText || 'Listening...');
+
+      const newSpeechText = (finalText + interimText).trim();
+      if (newSpeechText) {
+        const base = startTextRef.current;
+        const separator = base && !base.endsWith(' ') && !newSpeechText.startsWith(' ') ? ' ' : '';
+        onChange(base + separator + newSpeechText);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'no-speech') {
+        // Keep listening even if no speech is detected
+        return;
+      }
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        userStoppedRef.current = true;
+        setIsDictating(false);
+        showToast('Microphone access denied or service unavailable', 'error');
+      }
     };
 
     try {
       recognition.start();
     } catch (err) {
+      console.error('Speech recognition start error:', err);
       setIsDictating(false);
     }
   };
@@ -366,6 +416,33 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
         pointerEvents: 'auto',
       }}
     >
+      {/* Dictation Interim Status Banner */}
+      {isDictating && (
+        <div style={{
+          padding: '4px 8px',
+          backgroundColor: 'rgba(255, 59, 48, 0.05)',
+          borderBottom: `2px dashed ${activeTheme.ink}`,
+          fontSize: '10px',
+          color: activeTheme.accent,
+          fontFamily: 'var(--font-body)',
+          fontStyle: 'italic',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}>
+          <span style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            backgroundColor: activeTheme.accent,
+            display: 'inline-block',
+            flexShrink: 0,
+            animation: 'pulse 1s infinite alternate',
+          }} />
+          <span>Dictating: {interimTextState || 'Listening for speech...'}</span>
+        </div>
+      )}
+
       {/* Utility Bar */}
       <div
         style={{
@@ -393,9 +470,12 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
               cursor: 'pointer',
               textTransform: 'uppercase',
               borderRadius: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
             }}
           >
-            🎨 {keyboardTheme}
+            <Palette size={10} /> {keyboardTheme}
           </button>
           
           {/* Layout Toggler */}
@@ -412,9 +492,12 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
               cursor: 'pointer',
               textTransform: 'uppercase',
               borderRadius: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
             }}
           >
-            ⌨️ {isAlphabetical ? 'ABC' : 'QWERTY'}
+            <Keyboard size={10} /> {isAlphabetical ? 'ABC' : 'QWERTY'}
           </button>
         </div>
 
@@ -437,7 +520,8 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
               borderRadius: 0,
             }}
           >
-            {isDictating ? '🎤 LISTENING...' : '🎤 DICTATE'}
+            <Mic size={10} color={isDictating ? '#FFFFFF' : activeTheme.text} />
+            <span>{isDictating ? 'LISTENING...' : 'DICTATE'}</span>
           </button>
 
           {/* Clear Button */}
@@ -457,9 +541,12 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
               fontWeight: 'bold',
               cursor: 'pointer',
               borderRadius: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
             }}
           >
-            🗑️ CLEAR
+            <Trash2 size={10} /> CLEAR
           </button>
         </div>
       </div>

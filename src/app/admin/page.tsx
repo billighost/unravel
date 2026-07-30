@@ -412,7 +412,7 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast("Today's picture updated! ✨", 'success');
+        showToast("Today's picture updated!", 'success');
         setSelectedCreationId(null);
         loadAnalytics(); // Reload to populate audit log & daily challenge grid
       } else {
@@ -457,7 +457,7 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast('Reports cleared successfully! 🛡️', 'success');
+        showToast('Reports cleared successfully!', 'success');
         loadAnalytics(); // Reload to update list & log action
       } else {
         showToast(data.error || 'Failed to dismiss reports', 'error');
@@ -952,7 +952,7 @@ export default function AdminPage() {
 
                   {filteredReports.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', fontSize: '0.85rem', border: '2px dashed var(--border)' }}>
-                      {reportsSubTab === 'resolved' ? 'No resolved reports. Hide a reported item to see it here.' : '🎉 No reported creations right now.'}
+                      {reportsSubTab === 'resolved' ? 'No resolved reports. Hide a reported item to see it here.' : 'No reported creations right now.'}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

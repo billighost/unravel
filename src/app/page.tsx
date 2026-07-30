@@ -29,6 +29,7 @@ import { shareFile } from '@/lib/shareHelper';
 import { getLastCreation, clearLastCreation, toSampledGridResult, SavedCreation, SavedGridData } from '@/lib/storage';
 import { getDeviceId } from '@/lib/deviceId';
 import { t } from '@/lib/i18n/strings';
+import StructuredData from '@/components/seo/StructuredData';
 
 const CubeCanvas = dynamic(
   () => import('@/components/canvas/CubeCanvas').then((mod) => mod.CubeCanvas),
@@ -355,8 +356,23 @@ export default function Home() {
     };
   }, []);
 
+  const homeSchema = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "UNRAVEL",
+    "description": "Turn photos, drawings, and text into interactive 3D physical cube grid art.",
+    "applicationCategory": "EducationalApplication, GameApplication, ArtApplication",
+    "operatingSystem": "All",
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  };
+
   return (
     <main style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
+      <StructuredData schema={homeSchema} />
       {/* Screen Reader Accessibility Announcer */}
       <AccessibilityAnnouncer />
 

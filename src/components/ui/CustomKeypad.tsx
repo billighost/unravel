@@ -2,7 +2,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Delete, Check } from 'lucide-react';
+import { Delete, Check, Palette, Trash2 } from 'lucide-react';
 import { soundEngine } from '@/lib/audio/soundEngine';
 
 interface CustomKeypadProps {
@@ -203,9 +203,12 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
             cursor: 'pointer',
             textTransform: 'uppercase',
             borderRadius: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
           }}
         >
-          🎨 {keyboardTheme}
+          <Palette size={10} /> {keyboardTheme}
         </button>
 
         <button
@@ -224,9 +227,12 @@ export const CustomKeypad: React.FC<CustomKeypadProps> = ({
             fontWeight: 'bold',
             cursor: 'pointer',
             borderRadius: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
           }}
         >
-          🗑️ CLEAR
+          <Trash2 size={10} /> CLEAR
         </button>
       </div>
 
