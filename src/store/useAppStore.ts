@@ -10,6 +10,7 @@ interface AppState {
   isDisturbed: boolean;
   username: string | null;
   isAdmin: boolean;
+  hasPromptedResume: boolean;
   
   setMode: (mode: AppMode) => void;
   setGridData: (gridData: SampledGridResult, sourceMode?: string) => void;
@@ -17,6 +18,7 @@ interface AppState {
   resetToDemo: () => void;
   setUsername: (username: string | null) => void;
   setIsAdmin: (isAdmin: boolean) => void;
+  setHasPromptedResume: (prompted: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -25,6 +27,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isDisturbed: false,
   username: null,
   isAdmin: false,
+  hasPromptedResume: false,
 
   setMode: (mode) => set({ mode }),
   
@@ -37,7 +40,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     // Auto-save creation & add to local gallery history
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && sourceMode !== 'challenge') {
       const timestamp = Date.now();
       saveLastCreation({
         gridData,
@@ -66,4 +69,5 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setUsername: (username) => set({ username }),
   setIsAdmin: (isAdmin) => set({ isAdmin }),
+  setHasPromptedResume: (hasPromptedResume) => set({ hasPromptedResume }),
 }));

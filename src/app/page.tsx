@@ -143,11 +143,15 @@ export default function Home() {
   // Check for saved creation on app startup
   useEffect(() => {
     async function checkSaved() {
+      const store = useAppStore.getState();
+      if (store.hasPromptedResume) return;
+
       const saved = await getLastCreation();
       if (saved && saved.gridData) {
         setSavedCreation(saved);
         setIsResumeOpen(true);
       }
+      store.setHasPromptedResume(true);
     }
     checkSaved();
   }, []);
