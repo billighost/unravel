@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RotateCcw, Download, Plus, Images, Square, Sparkles, Check } from 'lucide-react';
@@ -539,7 +540,14 @@ export default function Home() {
           >
             {/* Top Bar: Wordmark + AppMenu */}
             <div style={{ pointerEvents: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-              <Wordmark size="lg" />
+              <h1 style={{ margin: 0, padding: 0, display: 'inline-flex' }}>
+                <Wordmark size="lg" />
+              </h1>
+              {/* Screen-reader accessible headings for search engines and accessibility */}
+              <div style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
+                <h2>3D Generative Pixel Art & Spring Physics Toy</h2>
+                <h3>Transform drawings, photos, and text into interactive physical blocks</h3>
+              </div>
               <AppMenu
                 onOpenGallery={() => setIsGalleryOpen(true)}
                 showNewOption={false}
@@ -600,6 +608,25 @@ export default function Home() {
                   {t('START')}
                 </Button>
               </div>
+
+              {/* Accessible Footer Navigation Links for SEO Crawler Discovery */}
+              <footer style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginTop: '0.5rem', width: '100%', flexWrap: 'wrap' }}>
+                <Link href="/about" style={{ fontSize: '0.7rem', fontFamily: 'var(--font-heading)', color: 'var(--ink)', textDecoration: 'none', borderBottom: '2px solid transparent' }}>
+                  ABOUT
+                </Link>
+                <span style={{ fontSize: '0.7rem', color: 'var(--border)' }}>•</span>
+                <Link href="/gallery" style={{ fontSize: '0.7rem', fontFamily: 'var(--font-heading)', color: 'var(--ink)', textDecoration: 'none', borderBottom: '2px solid transparent' }}>
+                  COMMUNITY GALLERY
+                </Link>
+                <span style={{ fontSize: '0.7rem', color: 'var(--border)' }}>•</span>
+                <Link href="/terms" style={{ fontSize: '0.7rem', fontFamily: 'var(--font-heading)', color: 'var(--ink)', textDecoration: 'none', borderBottom: '2px solid transparent' }}>
+                  TERMS
+                </Link>
+                <span style={{ fontSize: '0.7rem', color: 'var(--border)' }}>•</span>
+                <Link href="/privacy" style={{ fontSize: '0.7rem', fontFamily: 'var(--font-heading)', color: 'var(--ink)', textDecoration: 'none', borderBottom: '2px solid transparent' }}>
+                  PRIVACY
+                </Link>
+              </footer>
             </div>
           </motion.div>
         )}
