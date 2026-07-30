@@ -63,6 +63,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     profiler.stop('db_write', 'Database Write');
 
+    // Write-through caching: Cache the remix creation immediately (7 days TTL)
+    const { setCache } = await import('@/lib/cache');
+    setCache(`cache:creation:${record.id}`, record, 604800).catch(() => {});
+
     profiler.stop('total', 'Total Request Time');
     profiler.log(`/api/creations/${parentId}/remix`);
 

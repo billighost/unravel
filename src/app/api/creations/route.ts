@@ -56,6 +56,10 @@ export async function POST(req: NextRequest) {
     });
     profiler.stop('db_write', 'Database Write');
 
+    // Write-through caching: Cache the creation immediately (7 days TTL) so the first load is a cache-hit
+    const { setCache } = await import('@/lib/cache');
+    setCache(`cache:creation:${record.id}`, record, 604800).catch(() => {});
+
     // Return success immediately — offload non-critical work to background
     profiler.stop('total', 'Total Request Time');
     profiler.log('/api/creations');

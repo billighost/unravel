@@ -59,6 +59,15 @@ export interface DeviceSessionRecord {
   associated_at: string;
 }
 
+export interface AuditLogRecord {
+  id: number;
+  username: string;
+  action_type: string;
+  creation_id: string | null;
+  created_at: string;
+  details: string;
+}
+
 export interface AdminAnalytics {
   total_creations: number;
   total_public: number;
@@ -70,6 +79,8 @@ export interface AdminAnalytics {
   source_mode_stats: Array<{ source_mode: string; count: number }>;
   top_streaks: Array<{ username: string | null; device_id: string; current_streak: number; longest_streak: number }>;
   reported_creations: Array<CreationRecord>;
+  audit_logs?: AuditLogRecord[];
+  daily_challenges?: Array<{ active_date: string; creation_id: string; thumbnail_url: string; username: string | null; source_mode: string }>;
 }
 
 // In-Memory Fallback DB Store for development/offline environments without DATABASE_URL
@@ -83,6 +94,7 @@ class MemoryStore {
   deviceSessions = new Map<string, string>(); // device_id -> username
   analyticsCounters = new Map<string, number>();
   dailyActivity = new Map<string, { date: string; creations_count: number; public_count: number; challenge_completions: number; new_accounts: number; views: number }>();
+  auditLogs: AuditLogRecord[] = [];
 
   constructor() {
     // Seed initial demo creation for daily challenge
@@ -473,8 +485,11 @@ export async function reportCreation(creationId: string, reason?: string): Promi
   }
 
   const reasonVal = reason || null;
-  await sql`INSERT INTO reports (creation_id, reason) VALUES (${creationId}, ${reasonVal})`;
   const rows = await sql`
+    WITH inserted AS (
+      INSERT INTO reports (creation_id, reason) 
+      VALUES (${creationId}, ${reasonVal})
+    )
     UPDATE creations 
     SET report_count = report_count + 1, 
         is_hidden = (report_count + 1 >= ${threshold}) 
@@ -660,13 +675,18 @@ export async function updateDeviceStreak(deviceId: string): Promise<DeviceStreak
   incrementDailyActivity('challenge_completions').catch(() => {});
   incrementCounter('total_challenge_completions').catch(() => {});
 
-  return {
+  const streak = {
     device_id: deviceId,
     current_streak: newCurrent,
     longest_streak: newLongest,
     last_completed_date: today,
     username: username || null,
   };
+
+  const { setCache } = await import('@/lib/cache');
+  setCache(`cache:streak:${deviceId}`, streak, 86400).catch(() => {});
+
+  return streak;
 }
 
 export async function getDeviceStreak(deviceId: string): Promise<DeviceStreakRecord> {
@@ -688,6 +708,13 @@ export async function getDeviceStreak(deviceId: string): Promise<DeviceStreakRec
     return s;
   };
 
+  const cacheKey = `cache:streak:${deviceId}`;
+  const { getCache, setCache } = await import('@/lib/cache');
+  const cached = await getCache<DeviceStreakRecord>(cacheKey);
+  if (cached) {
+    return sanitizeStreak(cached);
+  }
+
   if (!sql) {
     let key = username ? `user:${username}` : deviceId;
     const raw = globalMemoryStore.deviceStreaks.get(key) || {
@@ -708,17 +735,22 @@ export async function getDeviceStreak(deviceId: string): Promise<DeviceStreakRec
   }
 
   if (rows.length === 0) {
-    return { device_id: deviceId, current_streak: 0, longest_streak: 0, last_completed_date: null, username: username || null };
+    const defaultStreak = { device_id: deviceId, current_streak: 0, longest_streak: 0, last_completed_date: null, username: username || null };
+    setCache(cacheKey, defaultStreak, 3600).catch(() => {});
+    return defaultStreak;
   }
   
   const rawRow = rows[0] as any;
-  return sanitizeStreak({
+  const streak = sanitizeStreak({
     device_id: rawRow.device_id,
     current_streak: Number(rawRow.current_streak),
     longest_streak: Number(rawRow.longest_streak),
     last_completed_date: rawRow.last_completed_date,
     username: rawRow.username,
   });
+
+  setCache(cacheKey, streak, 3600).catch(() => {});
+  return streak;
 }
 
 export async function incrementViewCount(id: string): Promise<void> {
@@ -924,16 +956,32 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics> {
       source_mode_stats: Array.from(modeMap.entries()).map(([source_mode, count]) => ({ source_mode, count })),
       top_streaks: streaks,
       reported_creations: creations.filter(c => c.report_count > 0).sort((a, b) => b.report_count - a.report_count).slice(0, 50),
+      audit_logs: globalMemoryStore.auditLogs.slice(0, 50),
+      daily_challenges: Array.from(globalMemoryStore.dailyChallenges.values())
+        .sort((a, b) => b.active_date.localeCompare(a.active_date))
+        .slice(0, 30)
+        .map(d => {
+          const c = globalMemoryStore.creations.get(d.creation_id);
+          return {
+            active_date: d.active_date,
+            creation_id: d.creation_id,
+            thumbnail_url: c?.thumbnail_url || '',
+            username: c?.username || null,
+            source_mode: c?.source_mode || 'upload',
+          };
+        }),
     };
   }
 
   // Parallel fast reads from pre-aggregated tables
-  const [countersRows, dailyRows, modeRows, streakRows, reportedRows] = await Promise.all([
+  const [countersRows, dailyRows, modeRows, streakRows, reportedRows, auditRows, challengeRows] = await Promise.all([
     sql`SELECT key, value FROM analytics_counters`,
     sql`SELECT * FROM daily_activity ORDER BY date DESC LIMIT 7`,
     sql`SELECT source_mode, count FROM source_mode_stats ORDER BY count DESC`,
     sql`SELECT username, device_id, current_streak, longest_streak FROM device_streaks ORDER BY longest_streak DESC LIMIT 10`,
     sql`SELECT id, device_id, created_at, thumbnail_url, source_mode, report_count, is_hidden, is_public, username FROM creations WHERE report_count > 0 ORDER BY report_count DESC LIMIT 50`,
+    sql`SELECT id, username, action_type, creation_id, created_at, details FROM admin_audit_logs ORDER BY created_at DESC LIMIT 50`,
+    sql`SELECT d.active_date, d.creation_id, c.thumbnail_url, c.username, c.source_mode FROM daily_challenges d JOIN creations c ON d.creation_id = c.id ORDER BY d.active_date DESC LIMIT 30`,
   ]);
 
   const counters: Record<string, number> = {};
@@ -952,6 +1000,15 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics> {
     source_mode_stats: modeRows.map((r: any) => ({ source_mode: r.source_mode, count: Number(r.count) })),
     top_streaks: streakRows.map((r: any) => ({ username: r.username, device_id: r.device_id, current_streak: Number(r.current_streak), longest_streak: Number(r.longest_streak) })),
     reported_creations: reportedRows as any[],
+    audit_logs: auditRows.map((r: any) => ({
+      id: Number(r.id),
+      username: r.username,
+      action_type: r.action_type,
+      creation_id: r.creation_id,
+      created_at: r.created_at,
+      details: r.details,
+    })),
+    daily_challenges: challengeRows as any[],
   };
 }
 
@@ -1033,4 +1090,67 @@ export async function adminToggleCreationVisibility(id: string, hidden: boolean)
       `.catch(() => {});
     }
   }
+}
+
+export async function logAdminAction(username: string, actionType: string, creationId: string | null, details: string): Promise<void> {
+  const sql = getSql();
+  const timestamp = new Date().toISOString();
+
+  if (!sql) {
+    globalMemoryStore.auditLogs.unshift({
+      id: globalMemoryStore.auditLogs.length + 1,
+      username,
+      action_type: actionType,
+      creation_id: creationId,
+      created_at: timestamp,
+      details,
+    });
+    return;
+  }
+
+  try {
+    await sql`
+      INSERT INTO admin_audit_logs (username, action_type, creation_id, details)
+      VALUES (${username}, ${actionType}, ${creationId}, ${details})
+    `;
+  } catch (err) {
+    console.error('Failed to log admin action:', err);
+  }
+}
+
+export async function getAdminAuditLogs(limit = 100): Promise<AuditLogRecord[]> {
+  const sql = getSql();
+
+  if (!sql) {
+    return globalMemoryStore.auditLogs.slice(0, limit);
+  }
+
+  const rows = await sql`
+    SELECT id, username, action_type, creation_id, created_at, details
+    FROM admin_audit_logs
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r: any) => ({
+    id: Number(r.id),
+    username: r.username,
+    action_type: r.action_type,
+    creation_id: r.creation_id,
+    created_at: r.created_at,
+    details: r.details,
+  }));
+}
+
+export async function adminDismissReports(id: string): Promise<void> {
+  const sql = getSql();
+
+  if (!sql) {
+    const item = globalMemoryStore.creations.get(id);
+    if (item) {
+      item.report_count = 0;
+    }
+    return;
+  }
+
+  await sql`UPDATE creations SET report_count = 0 WHERE id = ${id}`;
 }

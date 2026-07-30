@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminToggleCreationVisibility } from '@/lib/db';
+import { adminToggleCreationVisibility, logAdminAction, getAssociatedUsername } from '@/lib/db';
 import { requireAdmin } from '@/lib/adminAuth';
 
 export const runtime = 'edge';
@@ -18,6 +18,15 @@ export async function POST(req: NextRequest) {
     }
 
     await adminToggleCreationVisibility(creationId, hidden);
+
+    const deviceId = req.headers.get('x-device-id') || 'unknown';
+    const username = await getAssociatedUsername(deviceId) || 'admin';
+    await logAdminAction(
+      username,
+      hidden ? 'hide' : 'restore',
+      creationId,
+      `Updated creation visibility to: ${hidden ? 'hidden' : 'visible'}`
+    );
 
     return NextResponse.json({ success: true, creationId, hidden });
   } catch (err: any) {

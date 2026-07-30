@@ -134,25 +134,6 @@ export default function ChallengePage({ params }: ChallengePageProps) {
     };
   }, [id]);
 
-  // Set up canvas initialization with disturbed positions when canvas mounts
-  useEffect(() => {
-    if (!creation) return;
-
-    const handleCanvasReady = () => {
-      const physics = (window as any).__unravelPhysics;
-      if (physics) {
-        if (creation.disturbed_positions && creation.disturbed_positions.length > 0) {
-          physics.restoreDisturbedState(creation.disturbed_positions);
-        } else {
-          physics.triggerDisperse();
-        }
-      }
-    };
-
-    const timer = setTimeout(handleCanvasReady, 300);
-    return () => clearTimeout(timer);
-  }, [creation]);
-
   // Listen for revert complete event
   useEffect(() => {
     const handleRevertComplete = () => {
@@ -401,7 +382,10 @@ export default function ChallengePage({ params }: ChallengePageProps) {
       <CanvasInitializer gridData={sampledGrid} />
 
       {/* 3D WebGL Canvas */}
-      <CubeCanvas />
+      <CubeCanvas
+        initialDisturbedPositions={creation?.disturbed_positions}
+        shouldDisperseImmediately={!creation?.disturbed_positions || creation.disturbed_positions.length === 0}
+      />
 
       {/* UI Overlay */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '1rem', zIndex: 10 }}>
