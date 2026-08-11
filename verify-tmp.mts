@@ -7,7 +7,7 @@ globalThis.performance = globalThis.performance ?? ({ now: () => 0 } as any);
 globalThis.localStorage = { getItem: () => null, setItem(){}, removeItem(){} } as any;
 
 const THREE = await import('three');
-const { CubePhysicsEngine } = await import('./src/lib/cubePhysics.ts');
+const { CubePhysicsEngine } = await import('./src/lib/cubePhysics');
 
 let fail = 0;
 const check = (name: string, cond: boolean, extra = '') => {
