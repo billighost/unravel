@@ -43,7 +43,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const [activeField, setActiveField] = useState<'username' | 'specialCode' | 'pin' | 'confirmPin' | null>(null);
 
   // Global app settings (visible in modal)
-  const [cubeSizeLevel, setCubeSizeLevel] = useState(3);
+  const [cubeSizeLevel, setCubeSizeLevel] = useState(2);
 
   // Refs for underlying hidden inputs to maintain focus & cursor behavior
   const usernameRef = useRef<HTMLInputElement>(null);
@@ -103,6 +103,18 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     qualityTierManager.setCubeSizeLevel(level);
     if (useAppStore.getState().mode === 'landing') {
       useAppStore.getState().resetToDemo();
+    }
+    
+    // Save to DB if logged in
+    if (useAppStore.getState().username) {
+      fetch('/api/accounts/preferences', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': getDeviceId(),
+        },
+        body: JSON.stringify({ cubeSizeLevel: level }),
+      }).catch(err => console.error('Failed to save cube size preference', err));
     }
   };
 
@@ -221,6 +233,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         } else {
           showToast(mode === 'signup' ? 'Account created! Progress saved.' : 'Logged in successfully!', 'success');
         }
+        if (typeof data.cubeSizeLevel === 'number') {
+          setCubeSizeLevel(data.cubeSizeLevel);
+          qualityTierManager.setCubeSizeLevel(data.cubeSizeLevel);
+        }
+        
         announceToScreenReader(mode === 'signup' ? 'Account created' : 'Logged in');
         
         // Invalidate API caches for creations & gallery so they reload for the logged-in user

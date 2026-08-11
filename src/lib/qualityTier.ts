@@ -77,7 +77,7 @@ const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
 class QualityTierManager {
   private currentTier: QualityTier = 'high';
   private isManual: boolean = false;
-  private cubeSizeLevel: number = 3; // 1 to 5 (1=Giant, 5=Tiny)
+  private cubeSizeLevel: number = 2; // 1 to 5 (1=Giant, 5=Tiny, Default 2)
   private listeners: Set<(config: QualityConfig) => void> = new Set();
   private probeCompleted: boolean = false;
 
@@ -116,7 +116,7 @@ class QualityTierManager {
       case 3: return 1.0;   // Normal (base tier config)
       case 4: return 1.25;
       case 5: return 1.5;   // Tiny cubes (highest count)
-      default: return 1.0;
+      default: return 0.75;
     }
   }
 

@@ -92,6 +92,9 @@ export const AppMenu: React.FC<AppMenuProps> = ({
         if (data.loggedIn) {
           setStoreUsername(data.username);
           setIsAdmin(!!data.isAdmin);
+          if (typeof data.cubeSizeLevel === 'number') {
+            qualityTierManager.setCubeSizeLevel(data.cubeSizeLevel);
+          }
         }
       } catch (err) {
         console.error('Failed to restore account session in menu:', err);

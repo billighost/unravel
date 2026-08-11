@@ -69,7 +69,12 @@ export async function POST(req: NextRequest) {
     await associateDeviceWithAccount(deviceId, account.username);
     setCache(`session:${deviceId}`, account.username, 300).catch(() => {}); // Warm session cache
 
-    return NextResponse.json({ success: true, username: account.username, isAdmin: adminFlag });
+    return NextResponse.json({ 
+      success: true, 
+      username: account.username, 
+      isAdmin: adminFlag,
+      cubeSizeLevel: account.cube_size_level 
+    });
   } catch (err: any) {
     console.error('Login error:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

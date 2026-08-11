@@ -51,6 +51,7 @@ export interface AccountRecord {
   username: string;
   pin_hash: string;
   created_at: string;
+  cube_size_level?: number;
 }
 
 export interface DeviceSessionRecord {
@@ -810,6 +811,28 @@ export async function getAccountByUsername(username: string): Promise<AccountRec
   const rows = await sql`SELECT * FROM accounts WHERE username = ${cleanUsername}`;
   if (rows.length === 0) return null;
   return rows[0] as AccountRecord;
+}
+
+export async function updateAccountCubeSize(username: string, level: number): Promise<void> {
+  const sql = getSql();
+  const cleanUsername = username.trim();
+
+  if (!sql) {
+    const acc = globalMemoryStore.accounts.get(cleanUsername);
+    if (acc) acc.cube_size_level = level;
+    return;
+  }
+
+  try {
+    await sql`UPDATE accounts SET cube_size_level = ${level} WHERE username = ${cleanUsername}`;
+  } catch (err: any) {
+    if (err.message && err.message.includes('column "cube_size_level" of relation "accounts" does not exist')) {
+      await sql`ALTER TABLE accounts ADD COLUMN cube_size_level INT DEFAULT 2`;
+      await sql`UPDATE accounts SET cube_size_level = ${level} WHERE username = ${cleanUsername}`;
+    } else {
+      throw err;
+    }
+  }
 }
 
 export async function associateDeviceWithAccount(deviceId: string, username: string): Promise<void> {

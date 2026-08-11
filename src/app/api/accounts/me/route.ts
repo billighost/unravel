@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAssociatedUsername, isAdminUsername } from '@/lib/db';
+import { getAssociatedUsername, isAdminUsername, getAccountByUsername } from '@/lib/db';
 import { getCache, setCache } from '@/lib/cache';
 
 export const runtime = 'edge';
@@ -28,7 +28,13 @@ export async function GET(req: NextRequest) {
     if (username) {
       // Determine admin status from username
       const adminFlag = isAdminUsername(username);
-      const response = NextResponse.json({ loggedIn: true, username, isAdmin: adminFlag });
+      const account = await getAccountByUsername(username);
+      const response = NextResponse.json({ 
+        loggedIn: true, 
+        username, 
+        isAdmin: adminFlag, 
+        cubeSizeLevel: account?.cube_size_level 
+      });
       response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
       return response;
     } else {

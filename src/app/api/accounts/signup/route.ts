@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     const pinHash = await bcrypt.hash(pin, 10);
 
     // Create account
-    await createAccount(cleanUsername, pinHash);
+    const account = await createAccount(cleanUsername, pinHash);
 
     // Migrate creations and streak
     await migrateDeviceDataToAccount(deviceId, cleanUsername);
@@ -67,7 +67,12 @@ export async function POST(req: NextRequest) {
 
     const adminFlag = isAdminUsername(cleanUsername);
 
-    return NextResponse.json({ success: true, username: cleanUsername, isAdmin: adminFlag });
+    return NextResponse.json({ 
+      success: true, 
+      username: account.username, 
+      isAdmin: adminFlag,
+      cubeSizeLevel: account.cube_size_level || 2
+    });
   } catch (err: any) {
     console.error('Signup error:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
