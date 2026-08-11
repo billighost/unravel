@@ -2,7 +2,7 @@ globalThis.window = { addEventListener(){}, removeEventListener(){}, dispatchEve
 globalThis.performance = globalThis.performance ?? ({ now: () => 0 } as any);
 globalThis.localStorage = { getItem: () => null, setItem(){}, removeItem(){} } as any;
 const THREE = await import('three');
-const { CubePhysicsEngine } = await import('./src/lib/cubePhysics.ts');
+const { CubePhysicsEngine } = await import('./src/lib/cubePhysics');
 
 const cols=12, rows=12, cubeSize=0.18, gap=0.02;
 const e = new CubePhysicsEngine(cols, rows, cubeSize, gap);
