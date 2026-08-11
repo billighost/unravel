@@ -4,6 +4,13 @@ export interface SampledGridResult {
   cols: number;
   rows: number;
   colors: Float32Array; // 3 * N RGB values normalized [0, 1]
+  /**
+   * Optional high-resolution artwork canvas. When present each cube samples its
+   * own tile of this canvas, so the picture keeps full detail even though the
+   * cube count is deliberately low (bigger cubes feel better to smash).
+   * Not persisted — regenerated from source on load, absent for procedural grids.
+   */
+  textureCanvas?: HTMLCanvasElement;
 }
 
 /**

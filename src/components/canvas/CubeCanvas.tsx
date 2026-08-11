@@ -8,6 +8,9 @@ import { soundEngine } from '@/lib/audio/soundEngine';
 import { ImpactParticleSystem } from '@/lib/impactParticles';
 import { uiObstacleManager } from '@/lib/uiObstacles';
 import { qualityTierManager, QualityConfig } from '@/lib/qualityTier';
+import { createTileMaterial, TileMaterialHandles } from '@/lib/cubeMaterial';
+import { buildTileUVAttributes } from '@/lib/cubeTexture';
+import { sessionPhysicsConfig } from '@/lib/sessionPhysics';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 
 function drawBrandIconToCanvas(
@@ -90,6 +93,9 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const particleSystemRef = useRef<ImpactParticleSystem | null>(null);
+  const tileMaterialRef = useRef<TileMaterialHandles | null>(null);
+  // Fit distance for the current grid, preserved so resize and tilt never clobber it.
+  const baseCameraZRef = useRef<number>(15);
 
   // Pointer tracking (Multi-touch support)
   const activePointersRef = useRef<Map<number, { prevX: number; prevY: number; time: number; vel: THREE.Vector2 }>>(new Map());
@@ -254,7 +260,10 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
 
     const handleContextRestored = () => {
       setIsContextLost(false);
-      if (physicsRef.current && instancedMeshRef.current && sceneRef.current) {
+      if (physicsRef.current && instancedMeshRef.current) {
+        // Every GPU buffer was lost, so force a full re-upload rather than only
+        // pushing the cubes that happened to be dirty.
+        physicsRef.current.markAllDirty();
         physicsRef.current.updateInstancedMesh(instancedMeshRef.current);
       }
     };
@@ -349,24 +358,58 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
       });
     }
 
-    // Resize handler
+    // Resize handler. Refits the camera distance too — on a rotate or a mobile
+    // browser-chrome change the aspect ratio shifts, and without refitting the
+    // artwork gets cropped off the sides.
     const handleResize = () => {
       if (!container || !rendererRef.current || !cameraRef.current) return;
       const w = container.clientWidth;
       const h = container.clientHeight;
-      cameraRef.current.aspect = w / h;
-      cameraRef.current.updateProjectionMatrix();
+      if (w === 0 || h === 0) return;
+
+      const camera = cameraRef.current;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
       rendererRef.current.setSize(w, h);
+
+      const physics = physicsRef.current;
+      if (physics) {
+        const { cols, rows, cubeSize, gap } = physics.grid;
+        const stride = cubeSize + gap;
+        const fovRad = (camera.fov * Math.PI) / 180;
+        const distForHeight = (rows * stride / 2) / Math.tan(fovRad / 2);
+        const distForWidth = (cols * stride / 2) / (Math.tan(fovRad / 2) * camera.aspect);
+        const margin = camera.aspect < 0.7 ? 1.32 : 1.18;
+        baseCameraZRef.current = Math.max(Math.max(distForHeight, distForWidth) * margin, 6);
+        camera.position.z = baseCameraZRef.current;
+      }
+
       uiObstacleManager.markDirty();
     };
 
     window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
       canvasEl.removeEventListener('webglcontextlost', handleContextLost);
       canvasEl.removeEventListener('webglcontextrestored', handleContextRestored);
       particles.dispose();
+
+      // Release the instanced grid and its artwork texture explicitly; these are
+      // the largest GPU allocations in the app and were previously leaked on
+      // unmount (only the renderer was disposed).
+      if (instancedMeshRef.current) {
+        instancedMeshRef.current.geometry.dispose();
+        sceneRef.current?.remove(instancedMeshRef.current);
+        instancedMeshRef.current = null;
+      }
+      if (tileMaterialRef.current) {
+        tileMaterialRef.current.dispose();
+        tileMaterialRef.current = null;
+      }
+
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
@@ -381,13 +424,22 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
     if (instancedMeshRef.current) {
       sceneRef.current.remove(instancedMeshRef.current);
       instancedMeshRef.current.geometry.dispose();
-      (instancedMeshRef.current.material as THREE.Material).dispose();
       instancedMeshRef.current = null;
     }
+    if (tileMaterialRef.current) {
+      tileMaterialRef.current.dispose();
+      tileMaterialRef.current = null;
+    }
 
-    const { cols, rows, colors } = gridData;
-    const cubeSize = 0.16;
-    const gap = 0.02;
+    const { cols, rows, colors, textureCanvas } = gridData;
+
+    // Cube size is derived from the grid so the artwork always fills a similar
+    // slice of the canvas regardless of resolution — coarse grids simply get
+    // chunkier, more satisfying cubes rather than a smaller picture.
+    const targetSpan = 7.2;
+    const stride = targetSpan / Math.max(cols, rows);
+    const gap = stride * 0.1;
+    const cubeSize = stride - gap;
 
     const physics = new CubePhysicsEngine(cols, rows, cubeSize, gap);
     physics.setRestSpeedThreshold(qualityConfig.restSpeedThreshold);
@@ -396,40 +448,73 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
     (window as any).__unravelPhysics = physics;
 
     const handleRevertEvent = () => {
-      if (physicsRef.current) {
-        physicsRef.current.triggerRevert();
-      }
+      physicsRef.current?.triggerRevert();
     };
     const handleDisperseEvent = () => {
-      if (physicsRef.current) {
-        physicsRef.current.triggerDisperse();
-      }
+      physicsRef.current?.triggerDisperse();
     };
 
     window.addEventListener('unravel-trigger-revert', handleRevertEvent);
     window.addEventListener('unravel-trigger-disperse', handleDisperseEvent);
 
     if (cameraRef.current) {
-      const gridWidth = cols * (cubeSize + gap);
-      const gridHeight = rows * (cubeSize + gap);
-      const maxDim = Math.max(gridWidth, gridHeight);
-      const fovRad = (cameraRef.current.fov * Math.PI) / 180;
-      let cameraZ = (maxDim / 2) / Math.tan(fovRad / 2) * 1.15;
-      cameraZ = Math.max(cameraZ, 8);
-      cameraRef.current.position.set(0, 0, cameraZ);
-      cameraRef.current.lookAt(0, 0, 0);
+      const gridWidth = cols * stride;
+      const gridHeight = rows * stride;
+      const camera = cameraRef.current;
+      const fovRad = (camera.fov * Math.PI) / 180;
+
+      // Fit both axes: vertical FOV bounds height directly, and the horizontal
+      // FOV (derived from aspect) bounds width. Taking the max of the two
+      // required distances is what stops the artwork being cropped on narrow
+      // phone screens — the old code only ever fitted the larger dimension.
+      const distForHeight = (gridHeight / 2) / Math.tan(fovRad / 2);
+      const distForWidth = (gridWidth / 2) / (Math.tan(fovRad / 2) * camera.aspect);
+
+      // Extra margin on short/narrow viewports so UI chrome never sits on top
+      // of the picture.
+      const margin = camera.aspect < 0.7 ? 1.32 : 1.18;
+      const cameraZ = Math.max(Math.max(distForHeight, distForWidth) * margin, 6);
+
+      camera.position.set(0, 0, cameraZ);
+      camera.lookAt(0, 0, 0);
+      baseCameraZRef.current = cameraZ;
     }
 
     const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshStandardMaterial({
-      roughness: 0.5,
-      metalness: 0.05,
-      flatShading: true,
-    });
 
-    const mesh = new THREE.InstancedMesh(geometry, material, cols * rows);
+    // Per-instance tile rects: each cube samples its own window of the artwork.
+    const { offsets, scales } = buildTileUVAttributes(cols, rows);
+    geometry.setAttribute('aTileOffset', new THREE.InstancedBufferAttribute(offsets, 2));
+    geometry.setAttribute('aTileScale', new THREE.InstancedBufferAttribute(scales, 2));
+
+    const tileMaterial = createTileMaterial(
+      sessionPhysicsConfig.materialRoughness,
+      sessionPhysicsConfig.materialMetalness
+    );
+    tileMaterialRef.current = tileMaterial;
+
+    if (textureCanvas) {
+      const texture = new THREE.CanvasTexture(textureCanvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      // Clamp + linear filtering keeps tile edges clean without bleeding into
+      // neighbouring tiles; no mipmaps since each tile is already at target size.
+      texture.wrapS = THREE.ClampToEdgeWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      texture.anisotropy = rendererRef.current
+        ? rendererRef.current.capabilities.getMaxAnisotropy()
+        : 1;
+      tileMaterial.setTexture(texture);
+    }
+
+    const mesh = new THREE.InstancedMesh(geometry, tileMaterial.material, cols * rows);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    
+    // The grid moves far beyond its initial bounds once dispersed, so let three
+    // skip frustum culling rather than popping cubes out mid-flight.
+    mesh.frustumCulled = false;
+
     physics.updateInstancedMesh(mesh);
     sceneRef.current.add(mesh);
     instancedMeshRef.current = mesh;
@@ -467,10 +552,12 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
         currentTiltRef.current.y = THREE.MathUtils.lerp(currentTiltRef.current.y, targetTiltRef.current.y, 0.05);
         camera.position.x = currentTiltRef.current.x;
         camera.position.y = currentTiltRef.current.y;
+        // Keep the fitted distance — reading camera.position.z here instead
+        // would let any stray write to it permanently rescale the artwork.
+        camera.position.z = baseCameraZRef.current;
 
         const fovRad = (camera.fov * Math.PI) / 180;
-        const cameraZ = camera.position.z;
-        const halfHeight = Math.tan(fovRad / 2) * cameraZ;
+        const halfHeight = Math.tan(fovRad / 2) * camera.position.z;
         const halfWidth = halfHeight * camera.aspect;
 
         const viewportBounds = {
@@ -537,11 +624,17 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
     const hit = raycasterRef.current.ray.intersectPlane(planeRef.current, planeIntersectRef.current);
 
     if (hit) {
+      // Scale the touch radius to the cube size so a fingertip always affects a
+      // comparable patch of artwork whatever the grid resolution — and so it
+      // stays a comfortable finger-sized target on phones.
+      const renderedSize = physicsRef.current.getRenderedSize();
+      const radius = Math.max(renderedSize * 2.6, 0.5);
+
       physicsRef.current.applyPointerImpulse(
         planeIntersectRef.current,
         vel,
-        1.2,
-        4.0
+        radius,
+        5.5
       );
 
       // Spawn impact particle puff on fast pointer swipes (respecting quality tier spawn limit)
@@ -580,10 +673,27 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
       };
       activePointersRef.current.set(e.pointerId, ptr);
     } else {
-      const dt = Math.max((now - ptr.time) / 1000, 0.001);
+      // Clamp dt to a sane minimum: a sub-millisecond gap between two coalesced
+      // pointer events otherwise divides into an enormous spurious velocity.
+      const dt = Math.max((now - ptr.time) / 1000, 0.008);
       const vx = (e.clientX - ptr.prevX) / dt;
       const vy = (e.clientY - ptr.prevY) / dt;
-      ptr.vel.set(vx * 0.005, -vy * 0.005);
+
+      // px/s -> world units/s, then clamped. Without a clamp a fast flick can
+      // launch cubes off-screen faster than collision can resolve.
+      const scale = 0.0022;
+      const maxSpeed = 9;
+      let wx = vx * scale;
+      let wy = -vy * scale;
+      const mag = Math.hypot(wx, wy);
+      if (mag > maxSpeed) {
+        wx = (wx / mag) * maxSpeed;
+        wy = (wy / mag) * maxSpeed;
+      }
+
+      // Smooth against the previous sample so jittery touch streams don't make
+      // the shove direction flicker frame to frame.
+      ptr.vel.set(ptr.vel.x * 0.35 + wx * 0.65, ptr.vel.y * 0.35 + wy * 0.65);
       ptr.prevX = e.clientX;
       ptr.prevY = e.clientY;
       ptr.time = now;
@@ -598,7 +708,10 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
   };
 
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'absolute', top: 0, left: 0 }}>
+    // Uses the app-shell sizing vars (see globals.css) rather than raw 100vh:
+    // on iOS Safari 100vh is the *expanded* viewport height, so the bottom of
+    // the canvas sat under the browser chrome and the artwork got cropped.
+    <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
       {/* WebGL Context Loss Reconnecting Overlay */}
       {isContextLost && (
         <div

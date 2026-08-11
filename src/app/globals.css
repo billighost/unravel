@@ -25,6 +25,30 @@
   padding: 0;
 }
 
+/*
+ * Viewport height that tracks the *visible* area on mobile.
+ *
+ * `100vh` on iOS Safari is the height with the toolbar collapsed, so a 100vh
+ * shell is taller than what you can actually see — that is what pushed the cube
+ * grid and controls below the fold on small iPhones. `dvh` follows the live
+ * viewport; `svh` is the fallback, and plain `vh` covers older browsers.
+ */
+:root {
+  --app-height: 100vh;
+}
+
+@supports (height: 100svh) {
+  :root {
+    --app-height: 100svh;
+  }
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --app-height: 100dvh;
+  }
+}
+
 html, body {
   width: 100%;
   height: 100%;
@@ -38,6 +62,26 @@ html, body {
 
 body.scroll-locked, html.scroll-locked {
   overflow: hidden !important;
+}
+
+/*
+ * Fixed, non-scrolling shell for the interactive canvas routes. Scoped to a
+ * class so content routes (privacy, terms) keep normal scrolling.
+ */
+html.unravel-fixed-viewport,
+html.unravel-fixed-viewport body {
+  height: var(--app-height);
+  overflow: hidden;
+  /* Prevents iOS rubber-band drag from pulling the canvas off the edges. */
+  overscroll-behavior: none;
+}
+
+.unravel-app-shell {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: var(--app-height);
+  overflow: hidden;
 }
 
 /* Typography Utility Classes */
@@ -57,8 +101,8 @@ body.scroll-locked, html.scroll-locked {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: var(--app-height);
   pointer-events: none;
   z-index: 9999;
   background: linear-gradient(
@@ -203,12 +247,54 @@ main, .page-root {
   overflow-x: hidden !important;
 }
 
+/*
+ * Small-phone tuning.
+ *
+ * The iPhone SE is 375x667 CSS px — the previous 320px breakpoint never fired
+ * for it, so it got full-size desktop chrome on a very short screen. These
+ * rules pull in the overlay padding so the canvas keeps as much room as
+ * possible, and let the bottom control bar wrap instead of overflowing.
+ */
+@media (max-width: 420px) {
+  .overlay-pad {
+    padding: 1rem !important;
+  }
+
+  .control-bar {
+    gap: 0.5rem !important;
+  }
+
+  .control-bar button {
+    padding: 0.7rem 0.9rem !important;
+    font-size: 0.8rem !important;
+  }
+}
+
+/* Short viewports (SE in landscape, split view) — reclaim vertical space. */
+@media (max-height: 700px) {
+  .overlay-pad {
+    padding-top: 0.85rem !important;
+    padding-bottom: 0.85rem !important;
+  }
+}
+
 @media (max-width: 320px) {
   body {
     font-size: 13px;
   }
   .font-heading {
     letter-spacing: -0.03em;
+  }
+}
+
+/* Honour the OS reduced-motion preference across all animated chrome. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

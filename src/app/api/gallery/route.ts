@@ -1,28 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPublicGallery, getUserCreations } from '@/lib/db';
+import { getPublicGallery, getUserCreations, getAssociatedUsername } from '@/lib/db';
 import { Profiler } from '@/lib/profiler';
 import { getCache, setCache, getGalleryVersion } from '@/lib/cache';
 
 export const runtime = 'edge';
 
+const DEFAULT_LIMIT = 30;
+const MAX_LIMIT = 60;
+
+/** Parses a pagination param, rejecting NaN/negative/oversized values. */
+function parseBounded(raw: string | null, fallback: number, min: number, max: number): number {
+  const parsed = parseInt(raw ?? '', 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
 export async function GET(req: NextRequest) {
   const profiler = new Profiler();
   try {
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get('limit') || '30', 10);
-    const offset = parseInt(searchParams.get('offset') || '0', 10);
+    const limit = parseBounded(searchParams.get('limit'), DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const offset = parseBounded(searchParams.get('offset'), 0, 0, Number.MAX_SAFE_INTEGER);
     const beforeDate = searchParams.get('before_date');
     const beforeId = searchParams.get('before_id');
     const filter = searchParams.get('filter');
     const deviceId = req.headers.get('x-device-id') || 'anonymous_device';
-    // Single lookup for the username to use in both the cache check (later) and DB queries
-    const username = await (async () => {
-      const { getAssociatedUsername } = await import('@/lib/db');
-      return getAssociatedUsername(deviceId);
-    })();
 
     if (filter === 'my') {
       profiler.start('db', 'Database Query My Creations');
+      // The username is only needed to widen the "my creations" query beyond the
+      // current device, so it is resolved here rather than on the public path.
+      const username = await getAssociatedUsername(deviceId);
       const items = await getUserCreations(deviceId, limit, offset, username);
       profiler.stop('db', 'Database Query My Creations');
 
@@ -52,17 +60,18 @@ export async function GET(req: NextRequest) {
       return new NextResponse(null, { status: 304 });
     }
 
-    const cachedData = await getCache(cacheKey);
+    const cachedData = await getCache<{ items?: unknown[] }>(cacheKey);
     profiler.stop('cache', 'Cache Check');
 
-    if (cachedData) {
+    if (cachedData && Array.isArray(cachedData.items)) {
+      const cachedItems = cachedData.items;
       profiler.stop('total', 'Total Request Time');
       profiler.log('/api/gallery (CACHED)');
-      
+
       const response = NextResponse.json({
         success: true,
-        items: cachedData.items,
-        count: cachedData.items.length,
+        items: cachedItems,
+        count: cachedItems.length,
       });
       
       // Inject Server-Timing headers
@@ -76,12 +85,12 @@ export async function GET(req: NextRequest) {
 
     profiler.start('db', 'Database Query');
     const items = await getPublicGallery(limit, offset, beforeDate, beforeId);
-
     profiler.stop('db', 'Database Query');
 
-    profiler.start('cache_write', 'Cache Write');
-    await setCache(cacheKey, { items }, 30); // 30 seconds TTL
-    profiler.stop('cache_write', 'Cache Write');
+    // Fire-and-forget: the client does not need the cache write to land before
+    // it gets its data, and awaiting it added a full Redis round-trip to every
+    // cache miss.
+    setCache(cacheKey, { items }, 30).catch(() => {});
 
     profiler.stop('total', 'Total Request Time');
     profiler.log('/api/gallery (MISS)');

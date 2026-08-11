@@ -82,7 +82,12 @@ async function handleFailedLogin(username: string, failedAttempts: number, faile
 
   if (newFailedAttempts >= 5) {
     // Lockout starts at 60s and doubles with each subsequent fail: 60s, 120s, 240s...
-    const duration = 60 * Math.pow(2, newFailedAttempts - 5);
+    // Capped at 1 hour: the unbounded form overflowed into effectively permanent
+    // lockouts (and absurd Redis TTLs) after ~30 failures, which is a denial of
+    // service against the real account owner rather than the attacker.
+    const MAX_LOCKOUT_SECONDS = 3600;
+    const exponent = Math.min(newFailedAttempts - 5, 20);
+    const duration = Math.min(60 * Math.pow(2, exponent), MAX_LOCKOUT_SECONDS);
     const lockoutExpiry = Date.now() + duration * 1000;
     await setCache(lockoutKey, lockoutExpiry, duration);
     return NextResponse.json({

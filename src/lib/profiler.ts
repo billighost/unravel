@@ -33,6 +33,11 @@ export class Profiler {
   }
 
   log(route: string) {
+    // Per-request console output is meaningful cost on the edge runtime (every
+    // line is serialized and shipped to the log drain) and leaks timing detail
+    // in production, so it is limited to development.
+    if (process.env.NODE_ENV === 'production') return;
+
     console.log(`[PROFILER] ${route}:`);
     for (const m of this.measurements) {
       console.log(`  - ${m.desc || m.name}: ${m.duration.toFixed(2)}ms`);

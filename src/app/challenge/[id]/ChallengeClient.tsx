@@ -67,22 +67,10 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
       setCreation(data.creation);
       announceToScreenReader('Challenge loaded. Disturb picture and tap revert to reveal.');
 
-      // Record streak / daily completion if this was today's daily challenge
-      if (data.creation.is_daily_challenge) {
-        fetch('/api/daily-challenge/complete', {
-          method: 'POST',
-          headers: { 'x-device-id': deviceId },
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.streak) {
-              setStreakCount(d.streak.current_streak);
-              soundEngine.playSuccessChime();
-              announceToScreenReader(`Streak milestone! ${d.streak.current_streak} day streak`);
-            }
-          })
-          .catch(() => {});
-      }
+      // The streak is credited on reveal completion only (see the
+      // unravel-revert-complete handler below). It used to also fire here, on
+      // load, which handed out the streak — and a success chime — for merely
+      // opening the page, and double-counted the completion.
     } catch (err) {
       setError("Hmm, we couldn't reach the server. Check your connection and try again.");
     } finally {
@@ -90,12 +78,12 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
     }
   };
 
-  // Lock body scroll for challenge canvas view
+  // Lock the viewport for the challenge canvas view.
   useEffect(() => {
-    document.documentElement.classList.add('scroll-locked');
+    document.documentElement.classList.add('unravel-fixed-viewport', 'scroll-locked');
     document.body.classList.add('scroll-locked');
     return () => {
-      document.documentElement.classList.remove('scroll-locked');
+      document.documentElement.classList.remove('unravel-fixed-viewport', 'scroll-locked');
       document.body.classList.remove('scroll-locked');
     };
   }, []);
@@ -169,7 +157,10 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
         })
           .then((r) => r.json())
           .then((d) => {
-            if (d.streak) setStreakCount(d.streak.current_streak);
+            if (d.streak) {
+              setStreakCount(d.streak.current_streak);
+              announceToScreenReader(`${d.streak.current_streak} day streak`);
+            }
           })
           .catch(() => {});
       }
@@ -353,7 +344,7 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
 
   if (loading || !canvasReady) {
     return (
-      <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg)', gap: '1rem' }}>
+      <div style={{ width: '100%', height: 'var(--app-height)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg)', gap: '1rem' }}>
         <BrandLoader size={44} />
         <p className="font-heading" style={{ fontSize: '1rem', color: 'var(--ink)' }}>LOADING PICTURE...</p>
       </div>
@@ -362,7 +353,7 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
 
   if (error || !creation) {
     return (
-      <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg)', padding: '2rem', gap: '1.5rem', textAlign: 'center' }}>
+      <div style={{ width: '100%', minHeight: 'var(--app-height)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg)', padding: 'clamp(1rem, 5vw, 2rem)', gap: '1.5rem', textAlign: 'center' }}>
         <div style={{ backgroundColor: 'var(--surface)', border: '4px solid var(--ink)', boxShadow: '8px 8px 0 var(--ink)', padding: '2.5rem', maxWidth: '420px', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem' }}>
           <AlertTriangle size={48} color="var(--accent)" />
           <h2 className="font-heading" style={{ fontSize: '1.2rem', color: 'var(--ink)' }}>PICTURE NOT FOUND</h2>
@@ -396,7 +387,7 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}
+      className="unravel-app-shell"
     >
       {/* Dynamic store synchronization helper */}
       <CanvasInitializer gridData={sampledGrid} />

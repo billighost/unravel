@@ -407,7 +407,7 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
         backgroundColor: activeTheme.background,
         borderTop: `4px solid ${activeTheme.ink}`,
         boxShadow: '0 -4px 16px rgba(0,0,0,0.15)',
-        padding: 'clamp(0.4rem, 1.5vw, 0.75rem) clamp(0.25rem, 1.5vw, 0.5rem) calc(clamp(0.4rem, 1.5vw, 0.75rem) + env(safe-area-inset-bottom)) clamp(0.25rem, 1.5vw, 0.5rem)',
+        padding: 'clamp(0.4rem, 1.5vw, 0.75rem) clamp(3px, 1.2vw, 8px) calc(clamp(0.4rem, 1.5vw, 0.75rem) + env(safe-area-inset-bottom)) clamp(3px, 1.2vw, 8px)',
         zIndex: 9999,
         display: 'flex',
         flexDirection: 'column',
@@ -606,7 +606,8 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
           style={{
             display: 'flex',
             justifyContent: 'center',
-            gap: 'clamp(0.12rem, 0.6vw, 0.3rem)',
+            // Tight gap on phones so the keys themselves get the width.
+            gap: 'clamp(3px, 0.6vw, 6px)',
             width: '100%',
           }}
         >
@@ -617,16 +618,16 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
 
             if (key === 'SHIFT') {
               displayKey = '';
-              icon = <ArrowUp size={14} color={isShift ? activeTheme.accent : activeTheme.ink} strokeWidth={3} />;
+              icon = <ArrowUp size={18} color={isShift ? activeTheme.accent : activeTheme.ink} strokeWidth={3} />;
             } else if (key === 'BACKSPACE') {
               displayKey = '';
-              icon = <Delete size={14} />;
+              icon = <Delete size={18} />;
             } else if (key === 'DONE') {
               displayKey = 'DONE';
-              icon = <Check size={12} style={{ marginLeft: '2px' }} />;
+              icon = <Check size={14} style={{ marginLeft: '2px' }} />;
             } else if (key === 'RETURN') {
               displayKey = '';
-              icon = <CornerDownLeft size={14} />;
+              icon = <CornerDownLeft size={18} />;
             } else if (key === 'SPACE') {
               displayKey = 'SPACE';
             } else if (key === '?123' || key === 'abc') {
@@ -635,37 +636,54 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
               displayKey = isShift && !showSymbols ? key.toUpperCase() : key.toLowerCase();
             }
 
-            // Key layout styles
+            // Key layout styles.
+            //
+            // The previous caps (`min(40px, 9vw)`) collapsed to ~34px wide on a
+            // 375px phone, well under the 44px minimum comfortable touch target,
+            // which is why keys were hard to hit. Letter keys now flex to fill
+            // the row with only a desktop-side cap, and every key gets a tall
+            // enough hit box (see `height` below) to be reliably tappable.
             let flex = '1';
-            let maxWidth = 'min(40px, 9vw)';
+            let maxWidth = '52px';
             let bg = activeTheme.bg;
             let color = activeTheme.text;
 
             if (key === 'SPACE') {
-              flex = '3';
-              maxWidth = 'min(180px, 40vw)';
+              flex = '4';
+              maxWidth = '220px';
             } else if (key === 'DONE') {
-              flex = '1.5';
-              maxWidth = 'min(72px, 16vw)';
+              flex = '1.6';
+              maxWidth = '84px';
               bg = activeTheme.accent;
               color = '#FFFFFF';
             } else if (key === 'SHIFT' || key === 'BACKSPACE') {
               flex = '1.5';
-              maxWidth = 'min(64px, 14vw)';
+              maxWidth = '78px';
             } else if (key === 'RETURN') {
-              flex = '1';
-              maxWidth = 'min(40px, 9vw)';
+              flex = '1.5';
+              maxWidth = '78px';
               bg = activeTheme.ink;
               color = activeTheme.background;
             } else if (key === '?123' || key === 'abc') {
               flex = '1.5';
-              maxWidth = 'min(64px, 14vw)';
+              maxWidth = '78px';
             }
 
             return (
               <motion.button
                 key={key}
+                type="button"
                 data-virtual-key="true"
+                // Icon-only keys have no text node, so without this a screen
+                // reader announces them as an unlabelled button.
+                aria-label={
+                  key === 'SHIFT' ? 'Shift'
+                  : key === 'BACKSPACE' ? 'Backspace'
+                  : key === 'RETURN' ? 'New line'
+                  : key === 'SPACE' ? 'Space'
+                  : key
+                }
+                aria-pressed={key === 'SHIFT' ? isShift : undefined}
                 onPointerDown={(e) => {
                   if (e.button !== 0) return;
                   e.preventDefault();
@@ -690,18 +708,18 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                   stopRepeat();
                   setActivePressedKey(null);
                 }}
-                onPointerLeave={(e) => {
-                  e.preventDefault();
-                  stopRepeat();
-                  setActivePressedKey(null);
-                }}
+                // No onPointerLeave: it fired with zero tolerance the instant the
+                // finger crossed the border, which cancelled the key before the
+                // slop check in onPointerMove below could ever apply.
                 onPointerMove={(e) => {
                   if (!activePressedKey) return;
                   const rect = activePressedKey.rect;
                   if (rect) {
                     const x = e.clientX;
                     const y = e.clientY;
-                    const buffer = 20; // 20px leeway
+                    // Generous slop: fingers roll during a press, and cancelling
+                    // the key on a few px of drift feels like a dropped keystroke.
+                    const buffer = 34;
                     if (
                       x < rect.left - buffer ||
                       x > rect.right + buffer ||
@@ -733,7 +751,9 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                 style={{
                   flex,
                   maxWidth,
-                  height: 'clamp(30px, 8.5vw, 42px)',
+                  // 46px floor keeps every key at/above the comfortable touch
+                  // target size on phones; it scales up on roomier screens.
+                  height: 'clamp(46px, 7.5vh, 56px)',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -742,12 +762,15 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                   border: `2px solid ${activeTheme.ink}`,
                   boxShadow: `2px 2px 0 ${activeTheme.ink}`,
                   fontFamily: 'var(--font-heading)',
-                  fontSize: 'clamp(0.55rem, 3vw, 0.9rem)',
+                  fontSize: 'clamp(0.8rem, 3.6vw, 1rem)',
                   fontWeight: 'bold',
                   cursor: 'pointer',
                   borderRadius: 0,
                   outline: 'none',
                   touchAction: 'manipulation',
+                  // Suppresses the grey iOS tap flash so the pixel-styled
+                  // whileTap animation is the only press feedback.
+                  WebkitTapHighlightColor: 'transparent',
                   padding: 0,
                   minWidth: 0,
                 }}

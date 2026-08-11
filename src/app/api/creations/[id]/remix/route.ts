@@ -3,6 +3,7 @@ import { createCreation, getCreationById } from '@/lib/db';
 import { rateLimit } from '@/lib/ratelimit';
 import { Profiler } from '@/lib/profiler';
 import { enqueueBackgroundJob } from '@/lib/qstash';
+import { setCache } from '@/lib/cache';
 
 export const runtime = 'edge';
 
@@ -64,7 +65,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     profiler.stop('db_write', 'Database Write');
 
     // Write-through caching: Cache the remix creation immediately (7 days TTL)
-    const { setCache } = await import('@/lib/cache');
     setCache(`cache:creation:${record.id}`, record, 604800).catch(() => {});
 
     profiler.stop('total', 'Total Request Time');

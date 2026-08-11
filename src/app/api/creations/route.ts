@@ -3,6 +3,7 @@ import { createCreation } from '@/lib/db';
 import { rateLimit } from '@/lib/ratelimit';
 import { Profiler } from '@/lib/profiler';
 import { enqueueBackgroundJob } from '@/lib/qstash';
+import { setCache } from '@/lib/cache';
 
 export const runtime = 'edge';
 
@@ -57,7 +58,6 @@ export async function POST(req: NextRequest) {
     profiler.stop('db_write', 'Database Write');
 
     // Write-through caching: Cache the creation immediately (7 days TTL) so the first load is a cache-hit
-    const { setCache } = await import('@/lib/cache');
     setCache(`cache:creation:${record.id}`, record, 604800).catch(() => {});
 
     // Return success immediately — offload non-critical work to background

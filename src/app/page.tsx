@@ -86,12 +86,13 @@ export default function Home() {
     }
   };
 
-  // Lock body scroll for main cube canvas view
+  // Lock the viewport for the interactive canvas view. Scoped to a class so
+  // content routes keep normal scrolling.
   useEffect(() => {
-    document.documentElement.classList.add('scroll-locked');
+    document.documentElement.classList.add('unravel-fixed-viewport', 'scroll-locked');
     document.body.classList.add('scroll-locked');
     return () => {
-      document.documentElement.classList.remove('scroll-locked');
+      document.documentElement.classList.remove('unravel-fixed-viewport', 'scroll-locked');
       document.body.classList.remove('scroll-locked');
     };
   }, []);
@@ -376,7 +377,7 @@ export default function Home() {
   };
 
   return (
-    <main style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
+    <main className="unravel-app-shell">
       <StructuredData schema={homeSchema} />
       {/* Screen Reader Accessibility Announcer */}
       <AccessibilityAnnouncer />

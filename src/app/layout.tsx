@@ -55,6 +55,15 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: '#F7F6F2',
+  // Without an explicit viewport, mobile Safari renders at a 980px layout width
+  // and scales down — which is why the cubes and UI appeared cropped and tiny
+  // on small phones. `viewportFit: cover` plus the safe-area insets used in the
+  // layout lets the canvas run edge to edge under the notch/home indicator.
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: 'cover',
 };
 
 import ClientProviders from './ClientProviders';

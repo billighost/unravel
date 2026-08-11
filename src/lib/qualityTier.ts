@@ -22,17 +22,24 @@ export interface QualityConfig {
   transcodeFallbackAllowed: boolean;
 }
 
+/**
+ * Grid resolutions are deliberately coarse. Each cube carries its own tile of a
+ * high-resolution artwork texture (see lib/cubeTexture.ts), so image quality no
+ * longer depends on cube count — which frees us to use fewer, chunkier cubes.
+ * Bigger cubes read better, feel more satisfying to smash, and leave far more
+ * CPU headroom for real cube-vs-cube collision.
+ */
 const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
   high: {
     tier: 'high',
     maxPixelRatio: 2.5,
     antialias: true,
     shadows: true,
-    gridResolutionMax: 160,
-    gridResolutionDraw: 160,
-    gridResolutionType: 160,
-    particlePoolSize: 150,
-    particleMaxSpawnsPerFrame: 4,
+    gridResolutionMax: 64,
+    gridResolutionDraw: 64,
+    gridResolutionType: 72,
+    particlePoolSize: 220,
+    particleMaxSpawnsPerFrame: 5,
     restSpeedThreshold: 0.02,
     transcodeFallbackAllowed: true,
   },
@@ -41,11 +48,11 @@ const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
     maxPixelRatio: 1.75,
     antialias: true,
     shadows: false,
-    gridResolutionMax: 100,
-    gridResolutionDraw: 100,
-    gridResolutionType: 100,
-    particlePoolSize: 80,
-    particleMaxSpawnsPerFrame: 2,
+    gridResolutionMax: 48,
+    gridResolutionDraw: 48,
+    gridResolutionType: 56,
+    particlePoolSize: 130,
+    particleMaxSpawnsPerFrame: 3,
     restSpeedThreshold: 0.04,
     transcodeFallbackAllowed: true,
   },
@@ -54,11 +61,11 @@ const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
     maxPixelRatio: 1.0,
     antialias: false,
     shadows: false,
-    gridResolutionMax: 60,
-    gridResolutionDraw: 60,
-    gridResolutionType: 60,
-    particlePoolSize: 30,
-    particleMaxSpawnsPerFrame: 1,
+    gridResolutionMax: 36,
+    gridResolutionDraw: 36,
+    gridResolutionType: 44,
+    particlePoolSize: 60,
+    particleMaxSpawnsPerFrame: 2,
     restSpeedThreshold: 0.07,
     transcodeFallbackAllowed: false,
   },
