@@ -3,10 +3,12 @@
  *
  * Renders high-res multi-line text on a scratch canvas, then downsamples it
  * using box filtering to produce a pixel grid suitable for 3D cube rendering.
+ * Also builds a per-cube tile texture so text cubes look as crisp as photo cubes.
  */
 
 import { SampledGridResult } from './demoGenerator';
 import { downsampleBoxFilter } from './imageSampler';
+import { buildTileTexture } from './cubeTexture';
 
 const BG_COLOR = '#000000';
 
@@ -41,8 +43,6 @@ export function renderTextToGrid(
   ctx.fillStyle = BG_COLOR;
   ctx.fillRect(0, 0, canvasW, canvasH);
 
-  // Split into lines
-  const lines = text.split('\n').filter((_, i, arr) => i < arr.length || arr[i] !== '');
   // Keep empty trailing line only if user just pressed enter
   const displayLines = text.endsWith('\n') ? [...text.split('\n')] : text.split('\n');
   const lineCount = Math.max(1, displayLines.length);
@@ -93,7 +93,12 @@ export function renderTextToGrid(
   // Downsample using the box filter from imageSampler
   const colors = downsampleBoxFilter(canvas, cols, rows, 'type');
 
-  return { cols, rows, colors };
+  // Build per-cube tile texture for crisp high-res text on cube faces
+  // (same pipeline as photo and draw modes — cubes show actual rendered text,
+  // not just a flat averaged colour per tile)
+  const tile = buildTileTexture(canvas, cols, rows);
+
+  return { cols, rows, colors, textureCanvas: tile ? tile.canvas : undefined };
 }
 
 /**

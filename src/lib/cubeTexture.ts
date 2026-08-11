@@ -16,7 +16,7 @@
  */
 
 /** Target pixels along each axis of a single cube's tile. */
-const PIXELS_PER_TILE = 14;
+const PIXELS_PER_TILE = 28;
 
 /** Hard ceiling on texture dimensions to stay inside mobile GPU limits. */
 const MAX_TEXTURE_DIMENSION = 2048;

@@ -535,7 +535,7 @@ export default function Home() {
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
-              padding: '2.5rem',
+              padding: 'clamp(1.25rem, 4vw, 2.5rem)',
               zIndex: 5,
             }}
           >
@@ -647,7 +647,7 @@ export default function Home() {
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
-              padding: '1.5rem',
+              padding: 'clamp(0.75rem, 2.5vw, 1.5rem)',
               zIndex: 5,
             }}
           >

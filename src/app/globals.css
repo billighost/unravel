@@ -257,24 +257,44 @@ main, .page-root {
  */
 @media (max-width: 420px) {
   .overlay-pad {
-    padding: 1rem !important;
+    padding: 0.75rem !important;
   }
 
   .control-bar {
-    gap: 0.5rem !important;
+    gap: 0.4rem !important;
   }
 
   .control-bar button {
-    padding: 0.7rem 0.9rem !important;
-    font-size: 0.8rem !important;
+    padding: 0.65rem 0.8rem !important;
+    font-size: 0.75rem !important;
   }
 }
 
 /* Short viewports (SE in landscape, split view) — reclaim vertical space. */
 @media (max-height: 700px) {
   .overlay-pad {
-    padding-top: 0.85rem !important;
-    padding-bottom: 0.85rem !important;
+    padding-top: 0.6rem !important;
+    padding-bottom: 0.6rem !important;
+  }
+}
+
+/*
+ * iOS Safe Area insets — keeps controls above the home indicator bar and
+ * notch/dynamic island. Without this, bottom buttons sit under the home bar.
+ */
+.unravel-app-shell {
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/*
+ * Extra-tight small screen: reclaim all possible vertical real estate.
+ * On 375×667 (SE) every pixel counts for the canvas.
+ */
+@media (max-width: 390px) and (max-height: 700px) {
+  .overlay-pad {
+    padding: 0.5rem !important;
   }
 }
 

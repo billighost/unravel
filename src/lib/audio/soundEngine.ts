@@ -80,17 +80,17 @@ class SoundEngine {
       const ctx = this.ctx;
 
       this.masterGain = ctx.createGain();
-      this.masterGain.gain.value = this.isMuted ? 0 : 0.9;
+      this.masterGain.gain.value = this.isMuted ? 0 : 1.0;
       this.masterGain.connect(ctx.destination);
 
       // Glue compressor: soaks up impact transients so dense collisions stay
       // punchy instead of clipping.
       this.compressor = ctx.createDynamicsCompressor();
-      this.compressor.threshold.value = -18;
-      this.compressor.knee.value = 24;
-      this.compressor.ratio.value = 8;
-      this.compressor.attack.value = 0.003;
-      this.compressor.release.value = 0.18;
+      this.compressor.threshold.value = -16;
+      this.compressor.knee.value = 18;
+      this.compressor.ratio.value = 6;
+      this.compressor.attack.value = 0.002;
+      this.compressor.release.value = 0.14;
       this.compressor.connect(this.masterGain);
 
       this.fxBus = ctx.createGain();
@@ -98,10 +98,11 @@ class SoundEngine {
       this.fxBus.connect(this.compressor);
 
       // Parallel reverb send gives impacts a sense of physical space.
+      // Longer and lusher than before — big satisfying room sound.
       const convolver = ctx.createConvolver();
-      convolver.buffer = this.createImpulseResponse(ctx, 1.1, 3.2);
+      convolver.buffer = this.createImpulseResponse(ctx, 1.6, 2.8);
       this.reverbSend = ctx.createGain();
-      this.reverbSend.gain.value = 0.28;
+      this.reverbSend.gain.value = 0.38;
       this.reverbSend.connect(convolver);
       convolver.connect(this.compressor);
 
@@ -151,7 +152,7 @@ class SoundEngine {
       // Ramp rather than jump — an instant gain change clicks audibly.
       this.masterGain.gain.cancelScheduledValues(now);
       this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-      this.masterGain.gain.linearRampToValueAtTime(muted ? 0 : 0.9, now + 0.06);
+      this.masterGain.gain.linearRampToValueAtTime(muted ? 0 : 1.0, now + 0.06);
     }
   }
 
@@ -253,21 +254,21 @@ class SoundEngine {
       const noiseFilter = ctx.createBiquadFilter();
       noiseFilter.type = 'bandpass';
       noiseFilter.frequency.setValueAtTime(
-        character === 'scrape' ? 1700 + intensity * 2200 : 900 + intensity * 1500,
+        character === 'scrape' ? 1800 + intensity * 2500 : 950 + intensity * 1800,
         now
       );
-      noiseFilter.Q.value = character === 'scrape' ? 0.8 : 1.8;
+      noiseFilter.Q.value = character === 'scrape' ? 0.7 : 1.5;
 
       const noiseGain = ctx.createGain();
-      const noiseLevel = level * (character === 'scrape' ? 0.55 : 0.34);
-      const noiseDur = character === 'scrape' ? 0.12 : 0.055;
+      const noiseLevel = level * (character === 'scrape' ? 0.65 : 0.42);
+      const noiseDur = character === 'scrape' ? 0.14 : 0.07;
       noiseGain.gain.setValueAtTime(0, now);
       noiseGain.gain.linearRampToValueAtTime(noiseLevel, now + 0.003);
       noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + noiseDur);
 
       noise.connect(noiseFilter);
       noiseFilter.connect(noiseGain);
-      this.connectVoice(noiseGain, 0.45);
+      this.connectVoice(noiseGain, 0.5);
       noise.start(now, Math.random() * 1.5);
       noise.stop(now + noiseDur + 0.02);
     }
@@ -287,21 +288,35 @@ class SoundEngine {
     if (!ctx || !this.fxBus || !this.noiseBuffer) return;
 
     const now = ctx.currentTime;
-    const duration = 0.85;
+    const duration = 1.0;
 
-    // Sub-bass drop supplies the chest-thump.
+    // Sub-bass thump — deeper and punchier than before.
     const sub = ctx.createOscillator();
     const subGain = ctx.createGain();
     sub.type = 'sine';
-    sub.frequency.setValueAtTime(150, now);
-    sub.frequency.exponentialRampToValueAtTime(32, now + 0.5);
+    sub.frequency.setValueAtTime(140, now);
+    sub.frequency.exponentialRampToValueAtTime(28, now + 0.55);
     subGain.gain.setValueAtTime(0, now);
-    subGain.gain.linearRampToValueAtTime(0.7, now + 0.01);
-    subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+    subGain.gain.linearRampToValueAtTime(0.85, now + 0.01);
+    subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
     sub.connect(subGain);
-    this.connectVoice(subGain, 0.4);
+    this.connectVoice(subGain, 0.35);
     sub.start(now);
-    sub.stop(now + 0.6);
+    sub.stop(now + 0.65);
+
+    // Mid body — adds a satisfying low-mid crack.
+    const mid = ctx.createOscillator();
+    const midGain = ctx.createGain();
+    mid.type = 'triangle';
+    mid.frequency.setValueAtTime(320, now);
+    mid.frequency.exponentialRampToValueAtTime(60, now + 0.18);
+    midGain.gain.setValueAtTime(0, now);
+    midGain.gain.linearRampToValueAtTime(0.35, now + 0.006);
+    midGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+    mid.connect(midGain);
+    this.connectVoice(midGain, 0.6);
+    mid.start(now);
+    mid.stop(now + 0.25);
 
     // Noise sweep: opens bright then closes down, reading as debris scattering.
     const noise = ctx.createBufferSource();
@@ -310,18 +325,18 @@ class SoundEngine {
 
     const sweep = ctx.createBiquadFilter();
     sweep.type = 'lowpass';
-    sweep.frequency.setValueAtTime(6500, now);
-    sweep.frequency.exponentialRampToValueAtTime(320, now + duration);
-    sweep.Q.value = 1.2;
+    sweep.frequency.setValueAtTime(8000, now);
+    sweep.frequency.exponentialRampToValueAtTime(280, now + duration);
+    sweep.Q.value = 1.0;
 
     const noiseGain = ctx.createGain();
     noiseGain.gain.setValueAtTime(0, now);
-    noiseGain.gain.linearRampToValueAtTime(0.4, now + 0.015);
+    noiseGain.gain.linearRampToValueAtTime(0.5, now + 0.012);
     noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
     noise.connect(sweep);
     sweep.connect(noiseGain);
-    this.connectVoice(noiseGain, 0.9);
+    this.connectVoice(noiseGain, 1.0);
     noise.start(now);
     noise.stop(now + duration + 0.05);
   }
@@ -493,10 +508,11 @@ class SoundEngine {
     if (!this.isBrushPlaying || !this.ctx || !this.brushFilter || !this.brushGain) return;
 
     const now = this.ctx.currentTime;
-    const normSpeed = Math.min(Math.max(speedPxPerSec / 1200, 0), 1);
+    const normSpeed = Math.min(Math.max(speedPxPerSec / 1000, 0), 1);
 
-    this.brushFilter.frequency.linearRampToValueAtTime(300 + normSpeed * 1900, now + 0.05);
-    this.brushGain.gain.linearRampToValueAtTime(0.04 + normSpeed * 0.2, now + 0.05);
+    // Wider frequency sweep and louder range for a more tactile brush feel.
+    this.brushFilter.frequency.linearRampToValueAtTime(250 + normSpeed * 2400, now + 0.04);
+    this.brushGain.gain.linearRampToValueAtTime(0.05 + normSpeed * 0.28, now + 0.04);
   }
 
   public stopBrush(): void {

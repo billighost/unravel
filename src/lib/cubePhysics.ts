@@ -371,8 +371,9 @@ export class CubePhysicsEngine {
     const maxCx = hash.cellCoord(pointerPos.x + radius);
     const minCy = hash.cellCoord(pointerPos.y - radius);
     const maxCy = hash.cellCoord(pointerPos.y + radius);
-    const minCz = hash.cellCoord(pointerPos.z - radius);
-    const maxCz = hash.cellCoord(pointerPos.z + radius);
+    // Search a deep column in Z so we always find cubes even if they pop up
+    const minCz = hash.cellCoord(pointerPos.z - radius * 10);
+    const maxCz = hash.cellCoord(pointerPos.z + radius * 10);
 
     let touched = 0;
     let peak = 0;
@@ -391,8 +392,8 @@ export class CubePhysicsEngine {
             const dy = positions[i3 + 1] - pointerPos.y;
             const dz = positions[i3 + 2] - pointerPos.z;
 
-            // Z is weighted down so a tap affects a disc, not a deep column.
-            const distSq = dx * dx + dy * dy + dz * dz * 0.25;
+            // Ignore Z distance so a swipe hits the cube "under" the finger on screen
+            const distSq = dx * dx + dy * dy;
             if (distSq >= radiusSq) continue;
 
             const dist = Math.max(Math.sqrt(distSq), 0.001);
@@ -407,8 +408,8 @@ export class CubePhysicsEngine {
             // the finger and pile up ahead of it.
             const pushX = (nx * 0.55 + pointerVel.x * 0.85) * factor * impulseMag;
             const pushY = (ny * 0.55 + pointerVel.y * 0.85) * factor * impulseMag;
-            // Cubes lift toward the camera near the centre of the press.
-            const pushZ = (0.35 + falloff * 0.5) * factor * impulseMag * 0.55;
+            // Cubes lift slightly off the floor but stay mostly flat
+            const pushZ = (0.15 + falloff * 0.2) * factor * impulseMag * 0.4;
 
             this.activateCube(i);
             velocities[i3] += pushX;
@@ -475,11 +476,10 @@ export class CubePhysicsEngine {
       const vxDir = dirX * cosA - dirY * sinA;
       const vyDir = dirX * sinA + dirY * cosA;
 
-      // Cubes nearer the centre launch harder, so the blast reads as a shockwave
-      // rolling outward instead of every cube leaving at once.
+      // Cubes slide outward mostly on the floor
       const centreBias = 1.35 - Math.min(dist / 3.0, 0.55);
       const speed = (4.0 + Math.random() * 5.0) * centreBias * response;
-      const popZ = (1.0 + Math.random() * 3.5) * response;
+      const popZ = (0.2 + Math.random() * 0.8) * response;
 
       this.activateCube(i);
 
@@ -632,11 +632,12 @@ export class CubePhysicsEngine {
           }
         }
 
-        if (positions[i3 + 2] < -3.0) {
-          positions[i3 + 2] = -3.0;
+        // The screen acts as a solid floor at Z=0
+        if (positions[i3 + 2] < 0.0) {
+          positions[i3 + 2] = 0.0;
           if (velocities[i3 + 2] < 0) velocities[i3 + 2] = -velocities[i3 + 2] * restitution;
-        } else if (positions[i3 + 2] > 6.0) {
-          positions[i3 + 2] = 6.0;
+        } else if (positions[i3 + 2] > 2.0) {
+          positions[i3 + 2] = 2.0;
           if (velocities[i3 + 2] > 0) velocities[i3 + 2] = -velocities[i3 + 2] * restitution;
         }
       }
