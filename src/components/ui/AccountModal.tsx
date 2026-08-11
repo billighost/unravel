@@ -110,10 +110,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       fetch('/api/accounts/preferences', {
         method: 'PATCH',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'text/plain',
           'x-device-id': getDeviceId(),
         },
-        body: JSON.stringify({ cubeSizeLevel: level }),
+        body: level.toString(),
       }).catch(err => console.error('Failed to save cube size preference', err));
     }
   };

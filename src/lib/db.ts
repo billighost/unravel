@@ -813,22 +813,39 @@ export async function getAccountByUsername(username: string): Promise<AccountRec
   return rows[0] as AccountRecord;
 }
 
-export async function updateAccountCubeSize(username: string, level: number): Promise<void> {
+export async function updateAccountCubeSizeByDevice(deviceId: string, level: number): Promise<boolean> {
   const sql = getSql();
-  const cleanUsername = username.trim();
 
   if (!sql) {
-    const acc = globalMemoryStore.accounts.get(cleanUsername);
+    const username = globalMemoryStore.deviceSessions.get(deviceId);
+    if (!username) return false;
+    const acc = globalMemoryStore.accounts.get(username);
     if (acc) acc.cube_size_level = level;
-    return;
+    return true;
   }
 
   try {
-    await sql`UPDATE accounts SET cube_size_level = ${level} WHERE username = ${cleanUsername}`;
+    const rows = await sql`
+      UPDATE accounts 
+      SET cube_size_level = ${level} 
+      FROM device_sessions 
+      WHERE accounts.username = device_sessions.username 
+        AND device_sessions.device_id = ${deviceId}
+      RETURNING accounts.username
+    `;
+    return rows.length > 0;
   } catch (err: any) {
     if (err.message && err.message.includes('column "cube_size_level" of relation "accounts" does not exist')) {
       await sql`ALTER TABLE accounts ADD COLUMN cube_size_level INT DEFAULT 2`;
-      await sql`UPDATE accounts SET cube_size_level = ${level} WHERE username = ${cleanUsername}`;
+      const rows = await sql`
+        UPDATE accounts 
+        SET cube_size_level = ${level} 
+        FROM device_sessions 
+        WHERE accounts.username = device_sessions.username 
+          AND device_sessions.device_id = ${deviceId}
+        RETURNING accounts.username
+      `;
+      return rows.length > 0;
     } else {
       throw err;
     }
