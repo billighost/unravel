@@ -23,7 +23,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set, get) => ({
   mode: 'landing',
-  gridData: generateDemoGrid(60, 40),
+  gridData: generateDemoGrid(),
   isDisturbed: false,
   username: null,
   isAdmin: false,
@@ -63,7 +63,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   resetToDemo: () =>
     set({
       mode: 'landing',
-      gridData: generateDemoGrid(60, 40),
+      gridData: generateDemoGrid(),
       isDisturbed: false,
     }),
 

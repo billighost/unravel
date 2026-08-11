@@ -77,12 +77,46 @@ const TIER_CONFIGS: Record<QualityTier, QualityConfig> = {
 class QualityTierManager {
   private currentTier: QualityTier = 'high';
   private isManual: boolean = false;
+  private cubeSizeLevel: number = 3; // 1 to 5 (1=Giant, 5=Tiny)
   private listeners: Set<(config: QualityConfig) => void> = new Set();
   private probeCompleted: boolean = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
       this.currentTier = this.detectInitialTier();
+      try {
+        const savedLevel = localStorage.getItem('unravel_cube_size_level');
+        if (savedLevel) {
+          const lvl = parseInt(savedLevel, 10);
+          if (lvl >= 1 && lvl <= 5) this.cubeSizeLevel = lvl;
+        }
+      } catch (e) {}
+    }
+  }
+
+  public getCubeSizeLevel(): number {
+    return this.cubeSizeLevel;
+  }
+
+  public setCubeSizeLevel(level: number) {
+    if (level >= 1 && level <= 5 && level !== this.cubeSizeLevel) {
+      this.cubeSizeLevel = level;
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('unravel_cube_size_level', level.toString()); } catch (e) {}
+      }
+      const config = this.getConfig();
+      this.listeners.forEach((listener) => listener(config));
+    }
+  }
+
+  private getCubeSizeScale(): number {
+    switch (this.cubeSizeLevel) {
+      case 1: return 0.5;   // Giant cubes (lowest count)
+      case 2: return 0.75;
+      case 3: return 1.0;   // Normal (base tier config)
+      case 4: return 1.25;
+      case 5: return 1.5;   // Tiny cubes (highest count)
+      default: return 1.0;
     }
   }
 
@@ -175,7 +209,16 @@ class QualityTierManager {
   }
 
   public getConfig(): QualityConfig {
-    return TIER_CONFIGS[this.currentTier];
+    const baseConfig = TIER_CONFIGS[this.currentTier];
+    if (this.cubeSizeLevel === 3) return baseConfig;
+
+    const scale = this.getCubeSizeScale();
+    return {
+      ...baseConfig,
+      gridResolutionMax: Math.max(8, Math.round(baseConfig.gridResolutionMax * scale)),
+      gridResolutionDraw: Math.max(8, Math.round(baseConfig.gridResolutionDraw * scale)),
+      gridResolutionType: Math.max(12, Math.round(baseConfig.gridResolutionType * scale)),
+    };
   }
 
   public setManualTier(tier: QualityTier) {

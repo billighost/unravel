@@ -11,6 +11,7 @@ import { announceToScreenReader } from '@/components/ui/AccessibilityAnnouncer';
 import { Button } from './Button';
 import { CustomKeyboard } from './CustomKeyboard';
 import { CustomKeypad } from './CustomKeypad';
+import { qualityTierManager } from '@/lib/qualityTier';
 import Link from 'next/link';
 
 interface AccountModalProps {
@@ -40,6 +41,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   // Virtual keyboard touch device detection
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [activeField, setActiveField] = useState<'username' | 'specialCode' | 'pin' | 'confirmPin' | null>(null);
+
+  // Global app settings (visible in modal)
+  const [cubeSizeLevel, setCubeSizeLevel] = useState(3);
 
   // Refs for underlying hidden inputs to maintain focus & cursor behavior
   const usernameRef = useRef<HTMLInputElement>(null);
@@ -89,8 +93,18 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       setPin('');
       setConfirmPin('');
       setActiveField(null);
+      setCubeSizeLevel(qualityTierManager.getCubeSizeLevel());
     }
   }, [isOpen, mode]);
+
+  const handleCubeSizeChange = (level: number) => {
+    soundEngine.playUIClickQuiet();
+    setCubeSizeLevel(level);
+    qualityTierManager.setCubeSizeLevel(level);
+    if (useAppStore.getState().mode === 'landing') {
+      useAppStore.getState().resetToDemo();
+    }
+  };
 
   // Detect if typed username requires an admin special code
   useEffect(() => {
@@ -623,6 +637,43 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
               </div>
             </>
           )}
+
+          {/* Global Settings (Visible to everyone) */}
+          <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '2px dashed var(--border)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label className="font-heading" style={{ fontSize: '0.75rem', color: 'var(--ink)' }}>CUBE SIZE</label>
+              <span className="font-heading" style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                {cubeSizeLevel === 1 ? 'GIANT' : cubeSizeLevel === 2 ? 'LARGE' : cubeSizeLevel === 3 ? 'NORMAL' : cubeSizeLevel === 4 ? 'SMALL' : 'TINY'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '0.3rem' }}>
+              {[1, 2, 3, 4, 5].map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => handleCubeSizeChange(lvl)}
+                  style={{
+                    flex: 1,
+                    height: '28px',
+                    backgroundColor: cubeSizeLevel === lvl ? 'var(--accent)' : 'var(--bg)',
+                    border: '2px solid var(--ink)',
+                    boxShadow: cubeSizeLevel === lvl ? 'inset 2px 2px 0 rgba(0,0,0,0.2)' : '2px 2px 0 var(--ink)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                  }}
+                >
+                  <div style={{
+                    width: `${16 - (lvl - 1) * 2.5}px`,
+                    height: `${16 - (lvl - 1) * 2.5}px`,
+                    backgroundColor: cubeSizeLevel === lvl ? '#FFF' : 'var(--ink)',
+                  }} />
+                </button>
+              ))}
+            </div>
+          </div>
         </motion.div>
       </div>
 
