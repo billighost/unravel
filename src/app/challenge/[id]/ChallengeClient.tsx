@@ -126,20 +126,20 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
   useEffect(() => {
     if (!creation) return;
 
-    const handleCanvasReady = () => {
+    const checkInterval = setInterval(() => {
       const physics = (window as any).__unravelPhysics;
       if (physics) {
+        clearInterval(checkInterval);
         if (creation.disturbed_positions && creation.disturbed_positions.length > 0) {
           physics.restoreDisturbedState(creation.disturbed_positions);
         } else {
-          physics.triggerDisperse();
+          setIsRevealed(true);
         }
         setCanvasReady(true);
       }
-    };
+    }, 100);
 
-    const timer = setTimeout(handleCanvasReady, 350);
-    return () => clearTimeout(timer);
+    return () => clearInterval(checkInterval);
   }, [creation]);
 
   // Listen for revert complete event

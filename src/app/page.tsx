@@ -259,9 +259,13 @@ export default function Home() {
 
   // Listen for revert completion to automatically finalize video recording
   useEffect(() => {
-    const handleRevertFinished = async () => {
+    const handleRevertFinished = () => {
       if (videoRecorder.isRecording()) {
-        await handleStopVideoRecording();
+        setTimeout(async () => {
+          if (videoRecorder.isRecording()) {
+            await handleStopVideoRecording();
+          }
+        }, 1000);
       }
     };
 
