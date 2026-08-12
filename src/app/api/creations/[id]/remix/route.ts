@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     if (typeof grid_data.colors !== 'string' && !Array.isArray(grid_data.colors)) {
-      return NextResponse.json({ error: 'grid_data.colors must be a hex string or number array' }, { status: 400 });
+      return NextResponse.json({ error: 'grid_data.colors must be an encoded string or number array' }, { status: 400 });
     }
 
     const remixId = `rmx_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;

@@ -30,10 +30,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid grid_data structure' }, { status: 400 });
     }
 
-    // Accept hex-compressed colors (string) OR legacy raw number[] — both handled in db.ts
-    // The frontend already sends hex via compressColors(), but we defend against old clients.
+    // Colours arrive as a base64 "b64:..." string from current clients, and may
+    // still be legacy hex or a raw number[] from older ones. All three are
+    // decoded client-side by decodeColors(), and stored verbatim as JSONB here.
     if (typeof grid_data.colors !== 'string' && !Array.isArray(grid_data.colors)) {
-      return NextResponse.json({ error: 'grid_data.colors must be a hex string or number array' }, { status: 400 });
+      return NextResponse.json({ error: 'grid_data.colors must be an encoded string or number array' }, { status: 400 });
     }
 
     const id = `c_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
