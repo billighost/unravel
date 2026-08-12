@@ -21,9 +21,10 @@
 
 import * as path from 'path';
 import { config } from 'dotenv';
-import { neon } from '@neondatabase/serverless';
+import postgres from 'postgres';
 import bcrypt from 'bcryptjs';
 import sharp from 'sharp';
+import { Redis } from '@upstash/redis';
 
 import {
   makeRng,
@@ -67,7 +68,7 @@ const TEXT_W = 480;
 const TEXT_H = 240;
 
 /** Long edge of the stored PNG thumbnail for generated artwork. */
-const THUMB_W = 132;
+const THUMB_W = 512;
 
 const IMAGE_FETCH_CONCURRENCY = 8;
 const INSERT_BATCH = 40;
@@ -80,7 +81,7 @@ if (!dbUrl) {
   console.error('DATABASE_URL is not set in .env.local');
   process.exit(1);
 }
-const sql = neon(dbUrl);
+const sql = postgres(dbUrl);
 
 const log = (msg: string) => console.log(msg);
 
@@ -251,7 +252,7 @@ async function listTables(): Promise<string[]> {
 async function countAll(tables: string[]): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   for (const table of tables) {
-    const rows = (await sql.query(`SELECT COUNT(*)::int AS n FROM "${table}"`)) as Array<{
+    const rows = (await sql.unsafe(`SELECT COUNT(*)::int AS n FROM "${table}"`)) as Array<{
       n: number;
     }>;
     counts[table] = rows[0].n;
@@ -275,7 +276,7 @@ async function clearDatabase(tables: string[]) {
   ].filter((t) => tables.includes(t));
 
   for (const table of wipe) {
-    await sql.query(`TRUNCATE TABLE "${table}"`);
+    await sql.unsafe(`TRUNCATE TABLE "${table}"`);
     log(`  cleared ${table}`);
   }
 
@@ -334,7 +335,7 @@ async function insertCreations(rows: CreationRow[]) {
       );
     });
 
-    await sql.query(
+    await sql.unsafe(
       `INSERT INTO creations
          (id, device_id, username, created_at, grid_data, thumbnail_url, source_mode, is_public, view_count)
        VALUES ${tuples.join(', ')}`,
@@ -380,7 +381,7 @@ async function main() {
       const createdAt = new Date(now - Math.floor(rng() * DAYS_SPREAD * 86400000)).toISOString();
       values.push(username, pinHash, createdAt);
     });
-    await sql.query(
+    await sql.unsafe(
       `INSERT INTO accounts (username, pin_hash, created_at) VALUES ${tuples.join(', ')}
        ON CONFLICT (username) DO NOTHING`,
       values
@@ -398,7 +399,7 @@ async function main() {
       tuples.push(`($${b + 1}, $${b + 2})`);
       values.push(deviceIds.get(username), username);
     });
-    await sql.query(
+    await sql.unsafe(
       `INSERT INTO device_sessions (device_id, username) VALUES ${tuples.join(', ')}
        ON CONFLICT (device_id) DO NOTHING`,
       values
@@ -564,7 +565,7 @@ async function main() {
   ];
 
   for (const [key, query] of counters) {
-    await sql.query(
+    await sql.unsafe(
       `INSERT INTO analytics_counters (key, value)
        SELECT $1, (${query})
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
