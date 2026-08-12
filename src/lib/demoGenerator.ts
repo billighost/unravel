@@ -1,16 +1,27 @@
 import { qualityTierManager } from './qualityTier';
 
+/** Per-mode tone shaping applied when averaging tiles. */
+export type ContrastMode = 'draw' | 'type' | 'photo';
+
 export interface SampledGridResult {
   cols: number;
   rows: number;
   colors: Float32Array; // 3 * N RGB values normalized [0, 1]
   /**
-   * Optional high-resolution artwork canvas. When present each cube samples its
-   * own tile of this canvas, so the picture keeps full detail even though the
+   * Optional high-resolution artwork source. When present each cube samples its
+   * own tile of this image, so the picture keeps full detail even though the
    * cube count is deliberately low (bigger cubes feel better to smash).
-   * Not persisted — regenerated from source on load, absent for procedural grids.
+   *
+   * A canvas when freshly sampled; an ImageBitmap/HTMLImageElement when decoded
+   * back from a saved creation. Absent for procedural grids.
    */
-  textureCanvas?: HTMLCanvasElement;
+  textureCanvas?: HTMLCanvasElement | ImageBitmap | HTMLImageElement;
+  /**
+   * Tone-shaping profile the per-cube averages were produced with. Recorded so
+   * the grid can be re-derived from `textureCanvas` at a different cube count
+   * (see resampleToGrid) without guessing which curve to reapply.
+   */
+  contrast?: ContrastMode;
 }
 
 /**

@@ -6,12 +6,32 @@
  * 2. Capped local gallery (up to 8 recent creations with low-res thumbnails)
  */
 
-import { SampledGridResult } from '@/lib/demoGenerator';
+import { SampledGridResult, ContrastMode } from '@/lib/demoGenerator';
+
+/**
+ * Colour payload formats, newest first:
+ *  - `Uint8Array`   — how creations are stored locally now: 3 bytes per cube,
+ *                     structured-cloneable, no string parsing on restore.
+ *  - `"b64:…"`      — how colours travel over the API (see encodeColorsForApi).
+ *  - hex `string`   — legacy API/IndexedDB format, 2 chars per byte.
+ *  - `number[]` / `Float32Array` — legacy raw floats.
+ */
+export type ColorPayload = Uint8Array | Float32Array | number[] | string;
 
 export interface SavedGridData {
   cols: number;
   rows: number;
-  colors: Float32Array | number[] | string;
+  colors: ColorPayload;
+  /**
+   * The artwork texture, encoded as an image Blob.
+   *
+   * Blobs are structured-cloneable, canvases are not: writing the live
+   * `textureCanvas` straight to IndexedDB threw DataCloneError and aborted the
+   * whole save, which is why creations silently stopped persisting.
+   */
+  texture?: Blob;
+  /** Tone-shaping profile used for the averages, so the grid can be re-derived. */
+  contrast?: ContrastMode;
 }
 
 export interface SavedCreation {
@@ -32,6 +52,9 @@ const DB_NAME = 'UnravelStorageDB';
 const DB_VERSION = 1;
 const STORE_LAST = 'last_creation';
 const STORE_GALLERY = 'gallery_items';
+
+/** Marks a base64-encoded colour payload, to tell it apart from legacy hex. */
+const BASE64_PREFIX = 'b64:';
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -57,28 +80,76 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-/**
- * Compresses Float32Array colors into a single hex string for efficient API transmission.
- */
-export function compressColors(colors: Float32Array | number[]): string {
-  let hex = '';
+/** Quantises normalized [0,1] float colours to one byte per channel. */
+export function encodeColorBytes(colors: Float32Array | number[]): Uint8Array {
+  const bytes = new Uint8Array(colors.length);
   for (let i = 0; i < colors.length; i++) {
-    const val = Math.min(255, Math.max(0, Math.round(colors[i] * 255)));
-    hex += val.toString(16).padStart(2, '0');
+    bytes[i] = Math.min(255, Math.max(0, Math.round(colors[i] * 255)));
   }
-  return hex;
+  return bytes;
 }
 
 /**
- * Decompresses a hex string representation back to a Float32Array.
+ * Encodes colours for API transport as base64 bytes.
+ *
+ * Base64 costs 4 characters per 3 bytes (33% overhead) where the previous hex
+ * encoding cost 2 characters per byte (100%), so the same grid travels in half
+ * the payload and decodes without per-byte parseInt calls.
  */
-export function decompressColors(hex: string): Float32Array {
-  const colors = new Float32Array(hex.length / 2);
-  for (let i = 0; i < colors.length; i++) {
-    colors[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16) / 255;
+export function encodeColorsForApi(colors: Float32Array | number[] | Uint8Array): string {
+  const bytes = colors instanceof Uint8Array ? colors : encodeColorBytes(colors);
+
+  let binary = '';
+  // Chunked so a large grid never blows the argument limit of String.fromCharCode.
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
   }
-  return colors;
+
+  if (typeof btoa === 'function') return BASE64_PREFIX + btoa(binary);
+  return BASE64_PREFIX + Buffer.from(bytes).toString('base64');
 }
+
+/** Back-compat alias — this is still the encoder used by the API callers. */
+export const compressColors = encodeColorsForApi;
+
+/** Decodes any supported colour payload into normalized [0,1] floats. */
+export function decodeColors(payload: ColorPayload): Float32Array {
+  if (payload instanceof Float32Array) return payload;
+
+  if (payload instanceof Uint8Array) {
+    const out = new Float32Array(payload.length);
+    for (let i = 0; i < payload.length; i++) out[i] = payload[i] / 255;
+    return out;
+  }
+
+  if (Array.isArray(payload)) return new Float32Array(payload);
+
+  if (typeof payload === 'string') {
+    if (payload.startsWith(BASE64_PREFIX)) {
+      const base64 = payload.slice(BASE64_PREFIX.length);
+      const binary = typeof atob === 'function'
+        ? atob(base64)
+        : Buffer.from(base64, 'base64').toString('binary');
+      const out = new Float32Array(binary.length);
+      for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i) / 255;
+      return out;
+    }
+
+    // Legacy hex.
+    const out = new Float32Array(payload.length / 2);
+    for (let i = 0; i < out.length; i++) {
+      out[i] = parseInt(payload.substring(i * 2, i * 2 + 2), 16) / 255;
+    }
+    return out;
+  }
+
+  return new Float32Array(0);
+}
+
+/** Back-compat alias for the decoder. */
+export const decompressColors = decodeColors;
+
 
 /**
  * Compresses disturbed positions objects into a flat array of rounded numbers.
@@ -101,23 +172,129 @@ export function compressDisturbedPositions(disturbed: Array<{ i: number; x: numb
 }
 
 /**
- * Converts a SavedGridData object (which may have number[] or hex string from JSON/IndexedDB)
- * into a typed SampledGridResult containing Float32Array.
+ * Converts a SavedGridData object into a typed SampledGridResult.
+ * Colours only — use restoreSavedGrid() to also decode the artwork texture.
  */
 export function toSampledGridResult(grid: SavedGridData): SampledGridResult {
-  let finalColors: Float32Array;
-  if (typeof grid.colors === 'string') {
-    finalColors = decompressColors(grid.colors);
-  } else if (grid.colors instanceof Float32Array) {
-    finalColors = grid.colors;
-  } else {
-    finalColors = new Float32Array(grid.colors);
-  }
   return {
     cols: grid.cols,
     rows: grid.rows,
-    colors: finalColors,
+    colors: decodeColors(grid.colors),
+    contrast: grid.contrast,
   };
+}
+
+/** Promise wrapper around canvas.toBlob, preferring WebP for size. */
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    try {
+      canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.9);
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+/** Decodes a stored texture Blob into something three.js can upload directly. */
+async function blobToTextureSource(blob: Blob): Promise<ImageBitmap | HTMLImageElement | null> {
+  try {
+    if (typeof createImageBitmap === 'function') {
+      return await createImageBitmap(blob);
+    }
+  } catch (_) {
+    // Fall through to the <img> path below.
+  }
+
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Texture decode failed'));
+      img.src = url;
+    });
+    // decode() has resolved by the time onload fires, so the bitmap is safe to
+    // upload even though the object URL is revoked immediately after.
+    return img;
+  } catch (_) {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Rebuilds a full SampledGridResult from a saved record, including the
+ * high-resolution artwork texture so a restored creation looks identical to the
+ * moment it was made rather than falling back to flat per-cube averages.
+ */
+export async function restoreSavedGrid(grid: SavedGridData): Promise<SampledGridResult> {
+  const result = toSampledGridResult(grid);
+
+  if (grid.texture instanceof Blob) {
+    const source = await blobToTextureSource(grid.texture);
+    if (source) result.textureCanvas = source;
+  }
+
+  return result;
+}
+
+/**
+ * Serialises a live grid for persistence: byte colours plus the artwork texture
+ * as an image Blob. Strips the canvas, which cannot be structured-cloned.
+ */
+export async function toSavedGridData(gridData: SampledGridResult): Promise<SavedGridData> {
+  const saved: SavedGridData = {
+    cols: gridData.cols,
+    rows: gridData.rows,
+    colors: encodeColorBytes(gridData.colors),
+    contrast: gridData.contrast,
+  };
+
+  const source = gridData.textureCanvas;
+  if (source) {
+    // A restored creation carries an ImageBitmap rather than a canvas, so draw
+    // whatever we have into one first — otherwise re-saving after a resume
+    // would quietly drop the artwork texture.
+    const canvas = source instanceof HTMLCanvasElement ? source : drawToCanvas(source);
+    if (canvas) {
+      const blob = await canvasToBlob(canvas);
+      if (blob) saved.texture = blob;
+    }
+  }
+
+  return saved;
+}
+
+/** Copies a decoded image source into a canvas so it can be re-encoded. */
+function drawToCanvas(source: ImageBitmap | HTMLImageElement): HTMLCanvasElement | null {
+  const width = source.width;
+  const height = source.height;
+  if (!width || !height) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.drawImage(source as CanvasImageSource, 0, 0);
+  return canvas;
+}
+
+/**
+ * Persists a creation as both the active auto-resume record and a local gallery
+ * entry. The texture is encoded once and shared between the two writes.
+ */
+export async function persistCreation(gridData: SampledGridResult, mode: string): Promise<void> {
+  const saved = await toSavedGridData(gridData);
+  const timestamp = Date.now();
+  const thumbnail = generateThumbnailDataUrl(gridData);
+
+  await Promise.all([
+    saveLastCreation({ gridData: saved, mode, timestamp }),
+    addGalleryItem({ gridData: saved, mode, timestamp, thumbnail }),
+  ]);
 }
 
 
@@ -127,9 +304,13 @@ export function toSampledGridResult(grid: SavedGridData): SampledGridResult {
 export async function saveLastCreation(creation: SavedCreation): Promise<void> {
   try {
     const db = await openDB();
-    const tx = db.transaction(STORE_LAST, 'readwrite');
-    const store = tx.objectStore(STORE_LAST);
-    store.put(creation, 'active');
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_LAST, 'readwrite');
+      tx.objectStore(STORE_LAST).put(creation, 'active');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
   } catch (err) {
     console.warn('Failed to auto-save creation to IndexedDB:', err);
   }
@@ -184,8 +365,12 @@ export async function addGalleryItem(item: Omit<GalleryItem, 'id'>): Promise<voi
     }
 
     const tx = db.transaction(STORE_GALLERY, 'readwrite');
-    const store = tx.objectStore(STORE_GALLERY);
-    store.add(item);
+    tx.objectStore(STORE_GALLERY).add(item);
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
   } catch (err) {
     console.warn('Failed to add gallery item to IndexedDB:', err);
   }
@@ -224,16 +409,44 @@ export async function deleteGalleryItem(id: number): Promise<void> {
 }
 
 /**
- * Generates a low-res thumbnail data URL from sampled grid data (Float32Array RGBs) for gallery cards.
+ * Renders a small preview data URL for gallery cards and share thumbnails.
+ *
+ * When the grid carries an artwork texture the thumbnail is drawn from that, so
+ * cards show the real picture instead of a cols x rows mosaic of averages. The
+ * per-cube averages remain the fallback for procedural and legacy grids.
  */
-export function generateThumbnailDataUrl(gridData: SavedGridData): string {
+export function generateThumbnailDataUrl(
+  gridData: SavedGridData | SampledGridResult
+): string {
   if (typeof document === 'undefined') return '';
 
-  const { cols, rows, colors } = gridData;
+  const { cols, rows } = gridData;
   if (cols <= 0 || rows <= 0) return '';
 
   try {
-    // 1. Create a 1:1 canvas of actual grid size
+    const textureSource = (gridData as SampledGridResult).textureCanvas;
+
+    // Long edge capped at 512px: crisp enough to double as a share image,
+    // small enough to stay a cheap upload.
+    const scale = 512 / Math.max(cols, rows);
+    const targetW = Math.max(1, Math.round(cols * scale));
+    const targetH = Math.max(1, Math.round(rows * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    if (textureSource) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(textureSource as CanvasImageSource, 0, 0, targetW, targetH);
+      return canvas.toDataURL('image/webp', 0.85);
+    }
+
+    // Fallback: paint one pixel per cube, then scale up without smoothing so
+    // the mosaic keeps its hard pixel edges.
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = cols;
     tempCanvas.height = rows;
@@ -242,9 +455,7 @@ export function generateThumbnailDataUrl(gridData: SavedGridData): string {
 
     const imgData = tempCtx.createImageData(cols, rows);
     const data = imgData.data;
-    
-    // Decompress if colors is a hex string
-    const colorArray = typeof colors === 'string' ? decompressColors(colors) : colors;
+    const colorArray = decodeColors((gridData as SavedGridData).colors);
 
     for (let i = 0; i < cols * rows; i++) {
       const i3 = i * 3;
@@ -256,19 +467,10 @@ export function generateThumbnailDataUrl(gridData: SavedGridData): string {
     }
     tempCtx.putImageData(imgData, 0, 0);
 
-    // 2. Scale it down/up onto the target thumbnail size
-    const targetW = Math.min(cols, 120);
-    const targetH = Math.min(rows, 80);
-    const canvas = document.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return tempCanvas.toDataURL('image/png');
-
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(tempCanvas, 0, 0, targetW, targetH);
 
-    return canvas.toDataURL('image/png');
+    return canvas.toDataURL('image/webp', 0.85);
   } catch (err) {
     console.error('Failed to generate thumbnail data URL:', err);
     return '';

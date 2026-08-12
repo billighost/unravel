@@ -79,6 +79,7 @@ class QualityTierManager {
   private isManual: boolean = false;
   private cubeSizeLevel: number = 2; // 1 to 5 (1=Giant, 5=Tiny, Default 2)
   private listeners: Set<(config: QualityConfig) => void> = new Set();
+  private cubeSizeListeners: Set<(level: number) => void> = new Set();
   private probeCompleted: boolean = false;
 
   constructor() {
@@ -106,7 +107,22 @@ class QualityTierManager {
       }
       const config = this.getConfig();
       this.listeners.forEach((listener) => listener(config));
+      // Separate from `listeners`: a cube-size change means the on-screen
+      // artwork has to be rebuilt at a new grid resolution, whereas a tier
+      // change from the frame-rate probe must not disturb it.
+      this.cubeSizeListeners.forEach((listener) => listener(level));
     }
+  }
+
+  /**
+   * Subscribes to explicit cube-size preference changes only.
+   * Returns an unsubscribe function.
+   */
+  public subscribeCubeSize(listener: (level: number) => void): () => void {
+    this.cubeSizeListeners.add(listener);
+    return () => {
+      this.cubeSizeListeners.delete(listener);
+    };
   }
 
   private getCubeSizeScale(): number {

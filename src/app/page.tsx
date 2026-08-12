@@ -27,7 +27,7 @@ import { sampleImageToGrid } from '@/lib/imageSampler';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { videoRecorder, VideoFormat } from '@/lib/videoRecorder';
 import { shareFile } from '@/lib/shareHelper';
-import { getLastCreation, clearLastCreation, toSampledGridResult, SavedCreation, SavedGridData } from '@/lib/storage';
+import { getLastCreation, clearLastCreation, restoreSavedGrid, SavedCreation, SavedGridData } from '@/lib/storage';
 import { getDeviceId } from '@/lib/deviceId';
 import { t } from '@/lib/i18n/strings';
 import StructuredData from '@/components/seo/StructuredData';
@@ -158,12 +158,21 @@ export default function Home() {
     checkSaved();
   }, []);
 
-  const handleResumeContinue = () => {
-    if (savedCreation && savedCreation.gridData) {
-      setGridData(toSampledGridResult(savedCreation.gridData), savedCreation.mode);
-      announceToScreenReader('Restored your saved creation');
-    }
+  const handleResumeContinue = async () => {
     setIsResumeOpen(false);
+    if (!savedCreation || !savedCreation.gridData) return;
+
+    try {
+      // Decoding the stored artwork texture is async, so restore before handing
+      // the grid to the canvas — otherwise the cubes would flash their flat
+      // average colours first.
+      const restored = await restoreSavedGrid(savedCreation.gridData);
+      setGridData(restored, savedCreation.mode, { persist: false });
+      announceToScreenReader('Restored your saved creation');
+    } catch (err) {
+      console.error('Failed to restore saved creation:', err);
+      showToast("Couldn't restore your last creation", 'error');
+    }
   };
 
   const handleResumeStartFresh = async () => {
@@ -756,7 +765,15 @@ export default function Home() {
       <GalleryModal
         isOpen={isGalleryOpen}
         onClose={() => setIsGalleryOpen(false)}
-        onSelectGridData={(data: SavedGridData) => setGridData(toSampledGridResult(data))}
+        onSelectGridData={async (data: SavedGridData) => {
+          try {
+            const restored = await restoreSavedGrid(data);
+            setGridData(restored, undefined, { persist: false });
+          } catch (err) {
+            console.error('Failed to open saved creation:', err);
+            showToast("Couldn't open that creation", 'error');
+          }
+        }}
       />
 
       {/* Screen Modes */}

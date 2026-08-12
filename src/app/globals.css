@@ -1,5 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&family=Press+Start+2P&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Inter:wght@700&family=Playfair+Display:wght@700&family=Righteous&family=Caveat:wght@700&display=swap');
-
+/*
+ * Font families resolve to the self-hosted next/font faces declared in
+ * app/layout.tsx (see the note there on why they are not @imported).
+ * The quoted names are kept as a fallback for any path where the variables are
+ * not defined, e.g. an isolated component rendered outside the root layout.
+ */
 :root {
   --bg: #F7F6F2;
   --surface: #FFFFFF;
@@ -9,10 +13,10 @@
   --text-primary: #1A1A1A;
   --text-secondary: #6B6B66;
   --border: #E4E2DA;
-  
-  --font-logo: 'Press Start 2P', system-ui, -apple-system, monospace;
-  --font-heading: 'Pixelify Sans', 'Press Start 2P', system-ui, -apple-system, sans-serif;
-  --font-body: 'Space Mono', monospace;
+
+  --font-logo: var(--font-press-start), 'Press Start 2P', system-ui, -apple-system, monospace;
+  --font-heading: var(--font-pixelify), 'Pixelify Sans', var(--font-press-start), system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-space-mono), 'Space Mono', monospace;
 
   --shadow-chunky: 4px 4px 0 var(--ink);
   --shadow-chunky-sm: 2px 2px 0 var(--ink);
@@ -315,6 +319,17 @@ main, .page-root {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Keyboard toolbar labels. On narrow phones the four controls plus their text
+ * would crowd the strip, so below 430px they become icon-only (each still has
+ * an aria-label, so nothing is lost to assistive tech).
+ */
+@media (max-width: 430px) {
+  .kb-tool-label {
+    display: none;
   }
 }
 

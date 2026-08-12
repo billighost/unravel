@@ -1,16 +1,32 @@
 const urlParams = new URL(self.location.href).searchParams;
-const VERSION = urlParams.get('v') || 'v11-v1';
+const VERSION = urlParams.get('v') || 'v12-v1';
 const CACHE_NAME = `unravel-pwa-${VERSION}`;
 const MEDIA_CACHE_NAME = 'unravel-media-cache';
 const API_CACHE_NAME = 'unravel-api-cache';
 const ALLOWED_CACHES = [CACHE_NAME, MEDIA_CACHE_NAME, API_CACHE_NAME];
 
-// App shell assets to pre-cache on install
+/**
+ * How long a navigation waits for the network before falling back to cache.
+ *
+ * Network-first with no deadline means a flaky or captive connection stalls the
+ * app for the full request timeout even though a perfectly good cached copy is
+ * sitting right there. The cached shell is served instead, and the network
+ * response still lands in the cache for next time.
+ */
+const NAV_NETWORK_TIMEOUT_MS = 2500;
+
+// App shell assets to pre-cache on install. Every route is listed so the whole
+// app is navigable offline after the first visit, not just the page that
+// happened to be open.
 const APP_SHELL_ASSETS = [
   '/',
+  '/gallery',
+  '/about',
+  '/privacy',
+  '/terms',
+  '/offline',
   '/manifest.json',
   '/favicon.ico',
-  '/offline',
   '/icons/apple-touch-icon.png',
   '/icons/favicon-16x16.png',
   '/icons/favicon-32x32.png',
@@ -161,12 +177,24 @@ function broadcast(data) {
   });
 }
 
-// Install: pre-cache static app shell and icon assets
+// Install: pre-cache static app shell and icon assets.
+//
+// Each asset is fetched individually rather than with cache.addAll, which
+// rejects the whole install if a single URL 404s — one missing icon used to be
+// enough to leave the app with no precache at all.
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_SHELL_ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.allSettled(
+        APP_SHELL_ASSETS.map((asset) =>
+          fetch(asset, { cache: 'reload' }).then((response) => {
+            if (response && response.status === 200) {
+              return cache.put(asset, response);
+            }
+          })
+        )
+      )
+    )
   );
   self.skipWaiting();
 });
@@ -182,6 +210,78 @@ self.addEventListener('activate', (event) => {
   );
   self.clients.claim();
 });
+
+// Lets the page ask for extra URLs to be cached once it is idle — used to warm
+// the JS chunks and route payloads of pages the user has not visited yet, so
+// going offline mid-session never hits an uncached route.
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.type !== 'WARM_CACHE' || !Array.isArray(data.urls)) return;
+
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.allSettled(
+        data.urls.map(async (url) => {
+          const existing = await cache.match(url);
+          if (existing) return;
+          const response = await fetch(url, { credentials: 'same-origin' });
+          if (response && response.status === 200) {
+            await cache.put(url, response);
+          }
+        })
+      )
+    )
+  );
+});
+
+/**
+ * Network-first with a deadline, then cache, then the offline shell.
+ * Used for both HTML navigations and App Router RSC payloads.
+ *
+ * `cacheable` is false for RSC payloads that carry no distinguishing query
+ * param: those would be stored under the same key as the route's HTML document,
+ * and serving a component payload in answer to a navigation renders a broken
+ * page. Next falls back to a full page load when an RSC fetch fails, so those
+ * requests lose nothing by going uncached.
+ */
+async function navigationStrategy(event, request, cacheable = true) {
+  const cache = await caches.open(CACHE_NAME);
+
+  const networkPromise = fetch(request)
+    .then((response) => {
+      if (cacheable && response && response.status === 200) {
+        cache.put(request, response.clone()).catch(() => {});
+      }
+      return response;
+    })
+    .catch(() => null);
+
+  // Keep the worker alive for the background cache write even if we answer
+  // from cache below.
+  event.waitUntil(networkPromise);
+
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(null), NAV_NETWORK_TIMEOUT_MS));
+  const fastResponse = await Promise.race([networkPromise, timeout]);
+  if (fastResponse) return fastResponse;
+
+  // ignoreVary: Next varies HTML responses on its router headers, which differ
+  // between a precache fetch and a real navigation. Without this the precached
+  // shell would never match and offline navigation would fail.
+  const cached = await cache.match(request, { ignoreVary: true });
+  if (cached) return cached;
+
+  // Nothing cached for this URL, so the network is the only hope — wait it out.
+  const lateResponse = await networkPromise;
+  if (lateResponse) return lateResponse;
+
+  const rootCached = await cache.match('/', { ignoreVary: true });
+  if (rootCached) return rootCached;
+  const offlinePage = await cache.match('/offline', { ignoreVary: true });
+  return (
+    offlinePage ||
+    new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/html' } })
+  );
+}
 
 // Fetch routing:
 // - App Shell & Icons: Cache-First
@@ -312,26 +412,38 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. HTML Navigation requests -> Network-First with Cache / Offline fallback
-  if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
+  // 1b. Hashed build output is immutable -> Cache-First, and never revalidated.
+  // These are the bulk of the bytes on a cold load, so serving them straight
+  // from cache is what makes a repeat visit paint almost immediately.
+  if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(
-      fetch(request)
-        .then((networkResponse) => {
+      caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
+        return fetch(request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
           }
           return networkResponse;
-        })
-        .catch(async () => {
-          const cachedResponse = await caches.match(request);
-          if (cachedResponse) return cachedResponse;
-          const rootCached = await caches.match('/');
-          if (rootCached) return rootCached;
-          const offlinePage = await caches.match('/offline');
-          return offlinePage || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/html' } });
-        })
+        });
+      })
     );
+    return;
+  }
+
+  // 2. HTML navigations and App Router RSC payloads -> Network-First with a
+  // timeout, then cache, then the offline shell.
+  //
+  // RSC payloads (client-side route transitions) used to fall through to the
+  // catch-all cache-first rule below, which pinned them to whatever was cached
+  // on the first visit — a client-side navigation could show indefinitely stale
+  // content while a full page load showed fresh content.
+  const accept = request.headers.get('accept') || '';
+  const isRscRequest = url.searchParams.has('_rsc') || accept.includes('text/x-component');
+
+  if (request.mode === 'navigate' || accept.includes('text/html') || isRscRequest) {
+    const cacheable = !isRscRequest || url.searchParams.has('_rsc');
+    event.respondWith(navigationStrategy(event, request, cacheable));
     return;
   }
 

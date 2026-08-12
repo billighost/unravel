@@ -9,12 +9,46 @@
  */
 
 import * as THREE from 'three';
+import { buildTileUVAttributes } from './cubeTexture';
 
 export interface TileMaterialHandles {
   material: THREE.MeshStandardMaterial;
   /** Swap in a new artwork texture (disposes the previous one). */
   setTexture: (texture: THREE.Texture | null) => void;
   dispose: () => void;
+}
+
+/**
+ * Builds the instanced cube geometry that createTileMaterial() expects.
+ *
+ * Two contracts are satisfied here, and both are easy to get wrong:
+ *
+ * 1. `aTileOffset` / `aTileScale` — the per-instance window into the artwork
+ *    texture that the vertex shader remaps UVs into.
+ *
+ * 2. A white per-vertex `color` attribute. The material needs
+ *    `vertexColors: true` because three only multiplies `vColor` into
+ *    `diffuseColor` when `USE_COLOR` is defined, and that define is what
+ *    carries `instanceColor` (the per-cube average colour) through to the
+ *    fragment stage. But `USE_COLOR` also makes the vertex shader run
+ *    `vColor.rgb *= color`, and an unbound attribute reads as (0, 0, 0) — so
+ *    without this white attribute every cube multiplies its colour by zero and
+ *    renders pure black. That only showed up for grids with no artwork texture
+ *    (restored saves, gallery items, challenges, the procedural demo), because
+ *    the tile-map branch overwrites diffuseColor outright.
+ */
+export function createCubeGeometry(cols: number, rows: number): THREE.BoxGeometry {
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+
+  const { offsets, scales } = buildTileUVAttributes(cols, rows);
+  geometry.setAttribute('aTileOffset', new THREE.InstancedBufferAttribute(offsets, 2));
+  geometry.setAttribute('aTileScale', new THREE.InstancedBufferAttribute(scales, 2));
+
+  const vertexCount = geometry.attributes.position.count;
+  const white = new Float32Array(vertexCount * 3).fill(1);
+  geometry.setAttribute('color', new THREE.BufferAttribute(white, 3));
+
+  return geometry;
 }
 
 export function createTileMaterial(
@@ -26,6 +60,7 @@ export function createTileMaterial(
     metalness,
     // Vertex colours carry the per-tile average, used as the base tint and as
     // the fallback whenever no artwork texture is bound (procedural demo grid).
+    // Requires the geometry from createCubeGeometry() — see the note there.
     vertexColors: true,
   });
 

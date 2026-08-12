@@ -8,19 +8,19 @@ import { Button } from '@/components/ui/Button';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { MuteButton } from '@/components/ui/MuteButton';
 import { CustomKeyboard } from '@/components/ui/CustomKeyboard';
-import { renderTextToGrid, calculatePreviewFontSize } from '@/lib/renderTextToCanvas';
+import { renderTextToGrid, layoutTextBlock, TextLayout } from '@/lib/renderTextToCanvas';
 import { qualityTierManager } from '@/lib/qualityTier';
 import { soundEngine } from '@/lib/audio/soundEngine';
 import { t } from '@/lib/i18n/strings';
 
 // -- FONT DEFINITIONS --
-// We lazy-load Google Fonts on mount via dynamic <link> injection
+// Families reference the self-hosted next/font variables declared in
+// app/layout.tsx. Canvas rendering resolves those variables to real family
+// names via resolveFontFamily, since ctx.font cannot parse var().
 interface FontOption {
   id: string;
   label: string;
   family: string;
-  /** Google Fonts URL query. Leave empty for system fonts. */
-  googleUrl?: string;
   previewText: string;
 }
 
@@ -28,42 +28,39 @@ const FONT_OPTIONS: FontOption[] = [
   {
     id: 'sans',
     label: 'SANS',
-    family: "'Inter', 'Helvetica Neue', sans-serif",
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Inter:wght@700&display=swap',
+    family: "var(--font-inter), 'Helvetica Neue', sans-serif",
     previewText: 'Abc',
   },
   {
     id: 'serif',
     label: 'SERIF',
-    family: "'Playfair Display', Georgia, serif",
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap',
+    family: 'var(--font-playfair), Georgia, serif',
     previewText: 'Abc',
   },
   {
     id: 'display',
     label: 'DISPLAY',
-    family: "'Righteous', Impact, sans-serif",
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Righteous&display=swap',
+    family: 'var(--font-righteous), Impact, sans-serif',
     previewText: 'Abc',
   },
   {
     id: 'handwritten',
     label: 'SCRIPT',
-    family: "'Caveat', 'Comic Sans MS', cursive",
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Caveat:wght@700&display=swap',
+    family: "var(--font-caveat), 'Comic Sans MS', cursive",
     previewText: 'Abc',
   },
   {
     id: 'pixel',
     label: 'PIXEL',
-    family: "'Press Start 2P', 'Courier New', monospace",
-    googleUrl: 'https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap',
+    family: "var(--font-press-start), 'Courier New', monospace",
     previewText: 'Abc',
   },
 ];
 
-const MAX_LINES = 6;
-const MAX_CHARS = 120;
+// Generous limits: text is word-wrapped and auto-scaled to fit, so a full
+// paragraph stays legible rather than being rejected at the input stage.
+const MAX_LINES = 12;
+const MAX_CHARS = 400;
 
 export const TypeMode: React.FC = () => {
   const setMode = useAppStore((state) => state.setMode);
@@ -74,19 +71,24 @@ export const TypeMode: React.FC = () => {
   const [isFontPickerOpen, setIsFontPickerOpen] = useState(false);
   const [fontsLoaded, setFontsLoaded] = useState(true);
   const previewRef = useRef<HTMLDivElement>(null);
-  const [previewFontSize, setPreviewFontSize] = useState(48);
+  const [layout, setLayout] = useState<TextLayout>({ fontSize: 48, lines: [''], lineHeight: 58 });
 
+  const displayText = text || 'TYPE';
 
-  // Recompute preview font size whenever text or font changes
+  // Lay the preview out with the exact same algorithm the cube renderer uses,
+  // so what you see in the box is what lands on the cubes — wrapping included.
   useEffect(() => {
-    if (!previewRef.current) return;
-    const rect = previewRef.current.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
+    const measure = () => {
+      if (!previewRef.current) return;
+      const { clientWidth, clientHeight } = previewRef.current;
+      if (clientWidth === 0 || clientHeight === 0) return;
+      setLayout(layoutTextBlock(displayText, clientWidth, clientHeight, selectedFont.family));
+    };
 
-    const displayText = text || 'TYPE';
-    const size = calculatePreviewFontSize(displayText, rect.width, rect.height, selectedFont.family);
-    setPreviewFontSize(size);
-  }, [text, selectedFont, fontsLoaded]);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [displayText, selectedFont, fontsLoaded]);
 
   const handleTextChange = useCallback((newVal: string) => {
     // Enforce max lines
@@ -111,9 +113,6 @@ export const TypeMode: React.FC = () => {
     const gridData = renderTextToGrid(text, cols, rows, selectedFont.family);
     setGridData(gridData);
   };
-
-  const displayText = text || 'TYPE';
-  const lineCount = (text.match(/\n/g) || []).length + 1;
 
   return (
     <motion.div
@@ -154,38 +153,48 @@ export const TypeMode: React.FC = () => {
         <MuteButton />
       </div>
 
-      {/* Live Preview Box (2:1 Aspect Ratio) */}
+      {/* Live Preview Box (2:1 Aspect Ratio, matching the cube grid) */}
       <div
-        ref={previewRef}
         style={{
           width: 'min(90vw, 500px)',
           aspectRatio: '2 / 1',
           backgroundColor: '#000000',
           border: '4px solid var(--ink)',
           boxShadow: '4px 4px 0 var(--ink)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           overflow: 'hidden',
-          padding: '0.5rem',
           marginBottom: '1rem',
         }}
       >
         <div
+          ref={previewRef}
           style={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
             color: '#FFFFFF',
             fontFamily: selectedFont.family,
-            fontSize: `${previewFontSize}px`,
+            fontSize: `${layout.fontSize}px`,
             fontWeight: 'bold',
             textAlign: 'center',
-            lineHeight: 1.25,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
             opacity: text ? 1 : 0.3,
-            transition: 'font-size 0.15s ease, opacity 0.1s ease',
+            transition: 'opacity 0.1s ease',
           }}
         >
-          {displayText}
+          {layout.lines.map((line, i) => (
+            <div
+              key={i}
+              style={{
+                height: `${layout.lineHeight}px`,
+                lineHeight: `${layout.lineHeight}px`,
+                whiteSpace: 'pre',
+              }}
+            >
+              {line}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -293,15 +302,16 @@ export const TypeMode: React.FC = () => {
           </AnimatePresence>
         </div>
 
-        {/* Line Count Indicator */}
+        {/* Character Count Indicator. Lines are wrapped and auto-scaled, so the
+            character budget is the limit that actually matters to the user. */}
         <span
           className="font-heading"
           style={{
             fontSize: '0.65rem',
-            color: lineCount >= MAX_LINES ? 'var(--accent)' : 'var(--muted)',
+            color: text.length >= MAX_CHARS ? 'var(--accent)' : 'var(--muted)',
           }}
         >
-          {lineCount}/{MAX_LINES} LINES
+          {text.length}/{MAX_CHARS}
         </span>
 
         {/* Convert Button */}

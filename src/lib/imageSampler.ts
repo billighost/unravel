@@ -1,6 +1,18 @@
-import { SampledGridResult } from './demoGenerator';
+import { SampledGridResult, ContrastMode } from './demoGenerator';
 import { qualityTierManager } from './qualityTier';
 import { buildTileTexture } from './cubeTexture';
+
+/**
+ * Linear samples taken per tile per axis when averaging.
+ *
+ * The averages only need to be a faithful *mean* of each tile, so there is no
+ * reason to read back the full-resolution texture (a 28px/tile grid means a
+ * ~2048² canvas, i.e. a 16 MB GPU→CPU readback and ~2M loop iterations on the
+ * main thread — that was the source of the long frame right after conversion).
+ * 6×6 = 36 gamma-correct samples per tile lands within a rounding error of the
+ * full-resolution mean for a fraction of the cost.
+ */
+const SAMPLES_PER_TILE = 6;
 
 /**
  * sRGB <-> linear conversion tables.
@@ -30,7 +42,7 @@ export function downsampleBoxFilter(
   sourceCanvas: HTMLCanvasElement,
   cols: number,
   rows: number,
-  contrastMode?: 'draw' | 'type' | 'photo'
+  contrastMode?: ContrastMode
 ): Float32Array {
   const srcW = sourceCanvas.width;
   const srcH = sourceCanvas.height;
@@ -123,6 +135,35 @@ export function downsampleBoxFilter(
   return colors;
 }
 
+/**
+ * Averages a source into per-tile colours via a small scratch canvas.
+ *
+ * Drawing the source down to `cols * SAMPLES_PER_TILE` first keeps the
+ * getImageData readback proportional to the cube count rather than to the
+ * texture size, and keeps the scratch canvas — the only one we read pixels
+ * back from — flagged `willReadFrequently` so the browser stops warning about
+ * repeated readbacks.
+ */
+export function sampleTileAverages(
+  source: HTMLImageElement | HTMLCanvasElement | ImageBitmap,
+  cols: number,
+  rows: number,
+  contrastMode?: ContrastMode
+): Float32Array {
+  const scratch = document.createElement('canvas');
+  scratch.width = Math.max(cols, cols * SAMPLES_PER_TILE);
+  scratch.height = Math.max(rows, rows * SAMPLES_PER_TILE);
+
+  const ctx = scratch.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Canvas 2D context creation failed');
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(source as CanvasImageSource, 0, 0, scratch.width, scratch.height);
+
+  return downsampleBoxFilter(scratch, cols, rows, contrastMode);
+}
+
 /** Loads any accepted image source into a decoded HTMLImageElement. */
 async function resolveImageElement(
   imageSource: HTMLImageElement | File | string
@@ -185,9 +226,9 @@ export async function sampleImageToGrid(
     throw new Error('Canvas 2D context creation failed');
   }
 
-  const colors = downsampleBoxFilter(tile.canvas, cols, rows, 'photo');
+  const colors = sampleTileAverages(img, cols, rows, 'photo');
 
-  return { cols, rows, colors, textureCanvas: tile.canvas };
+  return { cols, rows, colors, textureCanvas: tile.canvas, contrast: 'photo' };
 }
 
 /**
@@ -204,8 +245,28 @@ export function sampleCanvasToGrid(
   const { cols, rows } = fitGrid(sourceCanvas.width / sourceCanvas.height, maxDimension);
 
   const tile = buildTileTexture(sourceCanvas, cols, rows);
-  const textureSource = tile ? tile.canvas : sourceCanvas;
-  const colors = downsampleBoxFilter(textureSource, cols, rows, 'draw');
+  const colors = sampleTileAverages(sourceCanvas, cols, rows, 'draw');
 
-  return { cols, rows, colors, textureCanvas: tile ? tile.canvas : undefined };
+  return { cols, rows, colors, textureCanvas: tile ? tile.canvas : undefined, contrast: 'draw' };
+}
+
+/**
+ * Re-derives a grid from an already-sampled artwork source at a new cube count.
+ *
+ * Used when the cube-size preference changes: the artwork texture is the
+ * highest-fidelity copy of the picture we still hold, so the grid can be rebuilt
+ * live at a coarser or finer resolution without asking for the original file
+ * again.
+ */
+export function resampleToGrid(
+  source: HTMLCanvasElement | ImageBitmap | HTMLImageElement,
+  maxDimension: number,
+  contrast: ContrastMode = 'photo'
+): SampledGridResult {
+  const { cols, rows } = fitGrid(source.width / source.height, maxDimension);
+
+  const tile = buildTileTexture(source, cols, rows);
+  const colors = sampleTileAverages(source, cols, rows, contrast);
+
+  return { cols, rows, colors, textureCanvas: tile ? tile.canvas : undefined, contrast };
 }

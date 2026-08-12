@@ -12,9 +12,90 @@ interface CustomKeyboardProps {
   onDone?: () => void;
   /** Maximum character count. Defaults to 35. */
   maxLength?: number;
-  /** Maximum line count for multi-line support. If > 1, shows a RETURN key. Defaults to 1. */
+  /** Maximum line count. If > 1 the bottom-right key becomes ENTER. Defaults to 1. */
   maxLines?: number;
 }
+
+/** Keys that act on the field rather than inserting their own label. */
+const SPECIAL_KEYS = ['SHIFT', 'BACKSPACE', 'SPACE', 'DONE', 'ENTER', '?123', 'abc'];
+
+type KeyboardTheme = {
+  background: string;
+  ink: string;
+  bg: string;
+  accent: string;
+  text: string;
+};
+
+/**
+ * A chunky toolbar control for the strip above the keys.
+ *
+ * The previous inline buttons were 9px text in a 2px-padded box — visually
+ * unrelated to the app's chunky key styling, and well under a usable touch
+ * target. These share the keys' border/shadow/press language, keep a 30px
+ * minimum height, and drop their label on narrow phones so the row never
+ * crowds.
+ */
+const ToolButton: React.FC<{
+  theme: KeyboardTheme;
+  onClick: () => void;
+  ariaLabel: string;
+  label: string;
+  icon: React.ReactNode;
+  /** Colour chip shown ahead of the icon (used for the theme picker). */
+  swatch?: string;
+  active?: boolean;
+  ariaPressed?: boolean;
+  disabled?: boolean;
+}> = ({ theme, onClick, ariaLabel, label, icon, swatch, active, ariaPressed, disabled }) => (
+  <motion.button
+    type="button"
+    onClick={onClick}
+    aria-label={ariaLabel}
+    aria-pressed={ariaPressed}
+    disabled={disabled}
+    whileTap={disabled ? undefined : { scale: 0.94, x: 1, y: 1, boxShadow: `0 0 0 ${theme.ink}` }}
+    transition={{ duration: 0.08 }}
+    style={{
+      minHeight: '30px',
+      padding: '0 clamp(6px, 2vw, 10px)',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '5px',
+      backgroundColor: active ? theme.accent : theme.bg,
+      color: active ? '#FFFFFF' : theme.text,
+      border: `2px solid ${theme.ink}`,
+      boxShadow: `2px 2px 0 ${theme.ink}`,
+      fontFamily: 'var(--font-heading)',
+      fontSize: '10px',
+      fontWeight: 'bold',
+      letterSpacing: '0.02em',
+      textTransform: 'uppercase',
+      cursor: disabled ? 'default' : 'pointer',
+      opacity: disabled ? 0.4 : 1,
+      borderRadius: 0,
+      outline: 'none',
+      touchAction: 'manipulation',
+      WebkitTapHighlightColor: 'transparent',
+      flexShrink: 0,
+    }}
+  >
+    {swatch && (
+      <span
+        aria-hidden="true"
+        style={{
+          width: '10px',
+          height: '10px',
+          backgroundColor: swatch,
+          border: `2px solid ${active ? '#FFFFFF' : theme.ink}`,
+          flexShrink: 0,
+        }}
+      />
+    )}
+    {icon}
+    <span className="kb-tool-label">{label}</span>
+  </motion.button>
+);
 
 const themeStyles = {
   classic: {
@@ -124,14 +205,18 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
 
   const supportsMultiLine = maxLines > 1;
 
+  // On a multi-line field the bottom-right key is a real ENTER that inserts a
+  // newline, which is where a thumb expects to find it. The mid-row slot that
+  // used to hold a dedicated newline key becomes a useful punctuation key
+  // instead. Single-line fields keep DONE there to dismiss the keyboard.
+  const enterKey = supportsMultiLine ? 'ENTER' : 'DONE';
+
   const letterRows = [
     ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
     ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
     ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
     ['SHIFT', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'BACKSPACE'],
-    supportsMultiLine
-      ? ['?123', '.', ',', '!', '?', 'RETURN', "'", 'SPACE', 'DONE']
-      : ['?123', '.', ',', '!', '?', '-', "'", 'SPACE', 'DONE'],
+    ['?123', '.', ',', '!', '?', '-', "'", 'SPACE', enterKey],
   ];
 
   const alphabeticalRows = [
@@ -139,9 +224,7 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
     ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
     ['k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's'],
     ['SHIFT', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'BACKSPACE'],
-    supportsMultiLine
-      ? ['?123', '.', ',', '!', '?', 'RETURN', "'", 'SPACE', 'DONE']
-      : ['?123', '.', ',', '!', '?', '-', "'", 'SPACE', 'DONE'],
+    ['?123', '.', ',', '!', '?', '-', "'", 'SPACE', enterKey],
   ];
 
   const symbolRows = [
@@ -149,9 +232,7 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
     ['@', '#', '$', '_', '&', '-', '+', '(', ')', '/'],
     ['*', '"', "'", ':', ';', '!', '?', '\\', '|'],
     ['abc', '<', '>', '=', '[', ']', '{', '}', 'BACKSPACE'],
-    supportsMultiLine
-      ? ['abc', '.', ',', '@', '#', 'RETURN', '_', 'SPACE', 'DONE']
-      : ['abc', '.', ',', '@', '#', '-', '_', 'SPACE', 'DONE'],
+    ['abc', '.', ',', '@', '#', '&', '_', 'SPACE', enterKey],
   ];
 
   const rows = showSymbols
@@ -204,9 +285,9 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
       setShowSymbols(true);
     } else if (key === 'abc') {
       setShowSymbols(false);
-    } else if (key === 'RETURN') {
+    } else if (key === 'ENTER') {
       const currentLineCount = (currentValue.match(/\n/g) || []).length + 1;
-      if (currentLineCount < maxLines) {
+      if (currentLineCount < maxLines && currentValue.length < maxLength) {
         onChange(currentValue + '\n');
       }
     } else {
@@ -227,7 +308,7 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
     handleKeyPress(key, false);
 
     // Only repeat letters, numbers, spaces, and backspace
-    const nonRepeatable = ['SHIFT', 'DONE', '?123', 'abc', 'RETURN'];
+    const nonRepeatable = ['SHIFT', 'DONE', '?123', 'abc', 'ENTER'];
     if (nonRepeatable.includes(key)) return;
 
     timeoutRef.current = setTimeout(() => {
@@ -374,7 +455,7 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
     activePressedKey &&
     activePressedKey.rect &&
     containerRef.current &&
-    !['SHIFT', 'BACKSPACE', 'SPACE', 'DONE', 'RETURN', '?123', 'abc'].includes(activePressedKey.key);
+    !SPECIAL_KEYS.includes(activePressedKey.key);
 
   if (shouldShowMagnifier && activePressedKey && activePressedKey.rect && containerRef.current) {
     const containerRect = containerRef.current.getBoundingClientRect();
@@ -448,106 +529,55 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center',
+          alignItems: 'stretch',
+          gap: 'clamp(0.3rem, 1.2vw, 0.6rem)',
           borderBottom: `2px solid ${activeTheme.ink}`,
-          paddingBottom: 'clamp(0.2rem, 0.6vw, 0.4rem)',
-          marginBottom: 'clamp(0.1rem, 0.4vw, 0.2rem)',
-          gap: '0.4rem',
+          paddingBottom: 'clamp(0.3rem, 0.9vw, 0.5rem)',
+          marginBottom: 'clamp(0.15rem, 0.5vw, 0.3rem)',
         }}
       >
-        <div style={{ display: 'flex', gap: '0.4rem' }}>
-          {/* Theme Toggler */}
-          <button
+        {/* Left group: appearance */}
+        <div style={{ display: 'flex', gap: 'clamp(0.25rem, 1vw, 0.45rem)', minWidth: 0 }}>
+          <ToolButton
+            theme={activeTheme}
             onClick={handleThemeChange}
-            style={{
-              padding: '2px 8px',
-              backgroundColor: activeTheme.bg,
-              border: `2px solid ${activeTheme.ink}`,
-              color: activeTheme.text,
-              fontSize: '9px',
-              fontFamily: 'var(--font-heading)',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-              borderRadius: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            <Palette size={10} /> {keyboardTheme}
-          </button>
-          
-          {/* Layout Toggler */}
-          <button
+            ariaLabel={`Keyboard theme: ${keyboardTheme}. Tap to change`}
+            label={keyboardTheme}
+            icon={<Palette size={13} strokeWidth={2.5} />}
+            swatch={activeTheme.accent}
+          />
+          <ToolButton
+            theme={activeTheme}
             onClick={handleLayoutChange}
-            style={{
-              padding: '2px 8px',
-              backgroundColor: activeTheme.bg,
-              border: `2px solid ${activeTheme.ink}`,
-              color: activeTheme.text,
-              fontSize: '9px',
-              fontFamily: 'var(--font-heading)',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-              borderRadius: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            <Keyboard size={10} /> {isAlphabetical ? 'ABC' : 'QWERTY'}
-          </button>
+            ariaLabel={`Key layout: ${isAlphabetical ? 'alphabetical' : 'QWERTY'}. Tap to change`}
+            label={isAlphabetical ? 'ABC' : 'QWERTY'}
+            icon={<Keyboard size={13} strokeWidth={2.5} />}
+          />
         </div>
 
-        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-          {/* Dictate Button */}
-          <button
+        {/* Right group: input actions */}
+        <div style={{ display: 'flex', gap: 'clamp(0.25rem, 1vw, 0.45rem)', minWidth: 0 }}>
+          <ToolButton
+            theme={activeTheme}
             onClick={toggleDictation}
-            style={{
-              padding: '2px 8px',
-              backgroundColor: isDictating ? activeTheme.accent : activeTheme.bg,
-              border: `2px solid ${activeTheme.ink}`,
-              color: isDictating ? '#FFFFFF' : activeTheme.text,
-              fontSize: '9px',
-              fontFamily: 'var(--font-heading)',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              borderRadius: 0,
-            }}
-          >
-            <Mic size={10} color={isDictating ? '#FFFFFF' : activeTheme.text} />
-            <span>{isDictating ? 'LISTENING...' : 'DICTATE'}</span>
-          </button>
-
-          {/* Clear Button */}
-          <button
+            ariaLabel={isDictating ? 'Stop dictation' : 'Start dictation'}
+            ariaPressed={isDictating}
+            label={isDictating ? 'STOP' : 'DICTATE'}
+            icon={<Mic size={13} strokeWidth={2.5} />}
+            active={isDictating}
+          />
+          <ToolButton
+            theme={activeTheme}
             onClick={() => {
               soundEngine.playUIClick();
               triggerHaptic();
               onChange('');
             }}
-            style={{
-              padding: '2px 8px',
-              backgroundColor: activeTheme.bg,
-              border: `2px solid ${activeTheme.ink}`,
-              color: activeTheme.text,
-              fontSize: '9px',
-              fontFamily: 'var(--font-heading)',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              borderRadius: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            <Trash2 size={10} /> CLEAR
-          </button>
+            ariaLabel="Clear all text"
+            label="CLEAR"
+            icon={<Trash2 size={13} strokeWidth={2.5} />}
+            disabled={value.length === 0}
+          />
         </div>
       </div>
 
@@ -612,7 +642,6 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
           }}
         >
           {row.map((key) => {
-            const isSpecial = ['SHIFT', 'BACKSPACE', 'SPACE', 'DONE', 'RETURN', '?123', 'abc'].includes(key);
             let displayKey = key;
             let icon: React.ReactNode = null;
 
@@ -625,9 +654,9 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
             } else if (key === 'DONE') {
               displayKey = 'DONE';
               icon = <Check size={14} style={{ marginLeft: '2px' }} />;
-            } else if (key === 'RETURN') {
+            } else if (key === 'ENTER') {
               displayKey = '';
-              icon = <CornerDownLeft size={18} />;
+              icon = <CornerDownLeft size={20} strokeWidth={2.5} />;
             } else if (key === 'SPACE') {
               displayKey = 'SPACE';
             } else if (key === '?123' || key === 'abc') {
@@ -659,11 +688,11 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
             } else if (key === 'SHIFT' || key === 'BACKSPACE') {
               flex = '1.5';
               maxWidth = '78px';
-            } else if (key === 'RETURN') {
-              flex = '1.5';
-              maxWidth = '78px';
-              bg = activeTheme.ink;
-              color = activeTheme.background;
+            } else if (key === 'ENTER') {
+              flex = '1.6';
+              maxWidth = '84px';
+              bg = activeTheme.accent;
+              color = '#FFFFFF';
             } else if (key === '?123' || key === 'abc') {
               flex = '1.5';
               maxWidth = '78px';
@@ -679,7 +708,7 @@ export const CustomKeyboard: React.FC<CustomKeyboardProps> = ({
                 aria-label={
                   key === 'SHIFT' ? 'Shift'
                   : key === 'BACKSPACE' ? 'Backspace'
-                  : key === 'RETURN' ? 'New line'
+                  : key === 'ENTER' ? 'New line'
                   : key === 'SPACE' ? 'Space'
                   : key
                 }

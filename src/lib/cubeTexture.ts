@@ -30,33 +30,57 @@ export interface CubeTileTexture {
 }
 
 /**
+ * Per-tile pixel density for a given grid, capped so the resulting texture
+ * stays inside mobile GPU limits.
+ */
+export function chooseTilePixels(cols: number, rows: number): number {
+  const maxByWidth = Math.floor(MAX_TEXTURE_DIMENSION / cols);
+  const maxByHeight = Math.floor(MAX_TEXTURE_DIMENSION / rows);
+  return Math.max(2, Math.min(PIXELS_PER_TILE, maxByWidth, maxByHeight));
+}
+
+/**
+ * Allocates a blank canvas whose dimensions are an exact integer multiple of
+ * the cube grid. Callers that generate their artwork procedurally (text mode)
+ * draw straight into this at full texture resolution rather than rendering
+ * small and being upscaled by buildTileTexture.
+ */
+export function createTileCanvas(cols: number, rows: number): CubeTileTexture | null {
+  if (typeof document === 'undefined' || cols <= 0 || rows <= 0) return null;
+
+  const perTile = chooseTilePixels(cols, rows);
+  const canvas = document.createElement('canvas');
+  canvas.width = cols * perTile;
+  canvas.height = rows * perTile;
+
+  return { canvas, tilePixelsX: perTile, tilePixelsY: perTile };
+}
+
+/**
  * Renders a source image/canvas into a canvas whose dimensions are an exact
  * integer multiple of the cube grid, so each cube gets a clean pixel block.
+ *
+ * The 2D context is deliberately left GPU-backed (no `willReadFrequently`):
+ * this canvas is only ever drawn into and then uploaded as a WebGL texture.
+ * Per-tile averages are sampled from a small scratch canvas instead — see
+ * `sampleTileAverages` in imageSampler.ts.
  */
 export function buildTileTexture(
   source: HTMLImageElement | HTMLCanvasElement | ImageBitmap,
   cols: number,
   rows: number
 ): CubeTileTexture | null {
-  if (typeof document === 'undefined' || cols <= 0 || rows <= 0) return null;
+  const tile = createTileCanvas(cols, rows);
+  if (!tile) return null;
 
-  // Choose per-tile pixel density that keeps the texture under the GPU ceiling.
-  const maxByWidth = Math.floor(MAX_TEXTURE_DIMENSION / cols);
-  const maxByHeight = Math.floor(MAX_TEXTURE_DIMENSION / rows);
-  const perTile = Math.max(2, Math.min(PIXELS_PER_TILE, maxByWidth, maxByHeight));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = cols * perTile;
-  canvas.height = rows * perTile;
-
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const ctx = tile.canvas.getContext('2d');
   if (!ctx) return null;
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(source as CanvasImageSource, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(source as CanvasImageSource, 0, 0, tile.canvas.width, tile.canvas.height);
 
-  return { canvas, tilePixelsX: perTile, tilePixelsY: perTile };
+  return tile;
 }
 
 /**

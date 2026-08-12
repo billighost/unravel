@@ -8,8 +8,8 @@ import { soundEngine } from '@/lib/audio/soundEngine';
 import { ImpactParticleSystem } from '@/lib/impactParticles';
 import { uiObstacleManager } from '@/lib/uiObstacles';
 import { qualityTierManager, QualityConfig } from '@/lib/qualityTier';
-import { createTileMaterial, TileMaterialHandles } from '@/lib/cubeMaterial';
-import { buildTileUVAttributes } from '@/lib/cubeTexture';
+import { resampleToGrid } from '@/lib/imageSampler';
+import { createTileMaterial, createCubeGeometry, TileMaterialHandles } from '@/lib/cubeMaterial';
 import { sessionPhysicsConfig } from '@/lib/sessionPhysics';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 
@@ -102,6 +102,9 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
   const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
   const planeRef = useRef<THREE.Plane>(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
   const planeIntersectRef = useRef<THREE.Vector3>(new THREE.Vector3());
+  // Reused across pointer events: a fresh Vector2 per move handler is thousands
+  // of short-lived allocations during a single drag.
+  const pointerNdcRef = useRef<THREE.Vector2>(new THREE.Vector2());
 
   // Tilt parallax tracking (Mobile DeviceOrientation)
   const targetTiltRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -480,12 +483,7 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
       baseCameraZRef.current = cameraZ;
     }
 
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-
-    // Per-instance tile rects: each cube samples its own window of the artwork.
-    const { offsets, scales } = buildTileUVAttributes(cols, rows);
-    geometry.setAttribute('aTileOffset', new THREE.InstancedBufferAttribute(offsets, 2));
-    geometry.setAttribute('aTileScale', new THREE.InstancedBufferAttribute(scales, 2));
+    const geometry = createCubeGeometry(cols, rows);
 
     const tileMaterial = createTileMaterial(
       sessionPhysicsConfig.materialRoughness,
@@ -494,7 +492,11 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
     tileMaterialRef.current = tileMaterial;
 
     if (textureCanvas) {
-      const texture = new THREE.CanvasTexture(textureCanvas);
+      // Texture rather than CanvasTexture: the source is a canvas when freshly
+      // sampled but an ImageBitmap/HTMLImageElement when decoded from a saved
+      // creation, and Texture accepts all three.
+      const texture = new THREE.Texture(textureCanvas as any);
+      texture.needsUpdate = true;
       texture.colorSpace = THREE.SRGBColorSpace;
       // Clamp + linear filtering keeps tile edges clean without bleeding into
       // neighbouring tiles; no mipmaps since each tile is already at target size.
@@ -526,6 +528,77 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
       window.removeEventListener('unravel-trigger-disperse', handleDisperseEvent);
     };
   }, [gridData, setIsDisturbed, qualityConfig.restSpeedThreshold]);
+
+  // Live cube-size changes.
+  //
+  // Cube size is a function of the grid resolution, so changing it means
+  // re-deriving the grid — and doing that while cubes are mid-flight would snap
+  // the picture together jarringly. So: reassemble the artwork first, then swap
+  // in the new resolution once it has settled.
+  useEffect(() => {
+    let timeoutId: number | undefined;
+    let cancelled = false;
+
+    const rebuildAtCurrentSize = () => {
+      if (cancelled) return;
+
+      const grid = useAppStore.getState().gridData;
+      const source = grid.textureCanvas;
+      // Procedural grids (the landing demo) carry no artwork to resample, so
+      // regenerate them instead — generateDemoGrid reads the new resolution.
+      if (!source) {
+        if (useAppStore.getState().mode === 'landing') {
+          useAppStore.getState().resetToDemo();
+        }
+        return;
+      }
+
+      const config = qualityTierManager.getConfig();
+      const maxDimension =
+        grid.contrast === 'type' ? config.gridResolutionType
+        : grid.contrast === 'draw' ? config.gridResolutionDraw
+        : config.gridResolutionMax;
+
+      try {
+        const resampled = resampleToGrid(source, maxDimension, grid.contrast || 'photo');
+        useAppStore.getState().setGridData(resampled, undefined, { persist: false });
+      } catch (err) {
+        console.warn('Failed to rebuild grid at the new cube size:', err);
+      }
+    };
+
+    const unsubscribe = qualityTierManager.subscribeCubeSize(() => {
+      const physics = physicsRef.current;
+
+      if (!physics || !physics.isDisturbed) {
+        rebuildAtCurrentSize();
+        return;
+      }
+
+      physics.triggerRevert();
+
+      const onRevertComplete = () => {
+        window.removeEventListener('unravel-revert-complete', onRevertComplete);
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+        rebuildAtCurrentSize();
+      };
+
+      window.addEventListener('unravel-revert-complete', onRevertComplete);
+
+      // Safety net: a cube wedged against UI chrome can keep the revert from
+      // ever settling, and the size change must still apply.
+      timeoutId = window.setTimeout(() => {
+        window.removeEventListener('unravel-revert-complete', onRevertComplete);
+        rebuildAtCurrentSize();
+      }, 2500);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   // Main Physics & Render Loop + Page Visibility API Pause/Resume
   useEffect(() => {
@@ -620,7 +693,7 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
     const x = ((clientX - rect.left) / rect.width) * 2 - 1;
     const y = -((clientY - rect.top) / rect.height) * 2 + 1;
 
-    raycasterRef.current.setFromCamera(new THREE.Vector2(x, y), cameraRef.current);
+    raycasterRef.current.setFromCamera(pointerNdcRef.current.set(x, y), cameraRef.current);
     const hit = raycasterRef.current.ray.intersectPlane(planeRef.current, planeIntersectRef.current);
 
     if (hit) {

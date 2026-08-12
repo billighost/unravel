@@ -85,9 +85,28 @@ export const DrawMode: React.FC = () => {
   // Stroke tracking
   const lastPointRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-  // Undo history stack (up to 30 states)
-  const historyRef = useRef<ImageData[]>([]);
+  // Undo history, stored as canvas snapshots.
+  //
+  // This used to hold up to 30 ImageData objects. At 1800x1200 that is 8.6 MB
+  // per entry — a quarter of a gigabyte of JS heap at full depth — and every
+  // entry cost a synchronous GPU->CPU readback, which is what triggered the
+  // "Multiple readback operations using getImageData" warning and the long
+  // frames after each stroke. drawImage into an offscreen canvas keeps the
+  // pixels GPU-side and needs no readback at all.
+  const historyRef = useRef<HTMLCanvasElement[]>([]);
   const [canUndo, setCanUndo] = useState(false);
+
+  const MAX_HISTORY = 10;
+
+  const snapshotCanvas = (source: HTMLCanvasElement): HTMLCanvasElement | null => {
+    const snap = document.createElement('canvas');
+    snap.width = source.width;
+    snap.height = source.height;
+    const snapCtx = snap.getContext('2d');
+    if (!snapCtx) return null;
+    snapCtx.drawImage(source, 0, 0);
+    return snap;
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -101,21 +120,23 @@ export const DrawMode: React.FC = () => {
     // Keep initial canvas transparent
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Save initial state
-    historyRef.current = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+    // Save initial (blank) state
+    const initial = snapshotCanvas(canvas);
+    historyRef.current = initial ? [initial] : [];
     setCanUndo(false);
   }, []);
 
   const saveState = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    if (historyRef.current.length >= 30) {
+
+    const snap = snapshotCanvas(canvas);
+    if (!snap) return;
+
+    if (historyRef.current.length >= MAX_HISTORY) {
       historyRef.current.shift();
     }
-    historyRef.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    historyRef.current.push(snap);
     setCanUndo(historyRef.current.length > 1);
   };
 
@@ -127,7 +148,10 @@ export const DrawMode: React.FC = () => {
     if (!canvas || !lastState) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.putImageData(lastState, 0, 0);
+    // Clear first: the eraser brush composites with destination-out, so the
+    // snapshot has real transparency that a plain draw-over would not restore.
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(lastState, 0, 0);
     setCanUndo(historyRef.current.length > 1);
   };
 
@@ -137,7 +161,8 @@ export const DrawMode: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    historyRef.current = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+    const blank = snapshotCanvas(canvas);
+    historyRef.current = blank ? [blank] : [];
     setCanUndo(false);
   };
 
