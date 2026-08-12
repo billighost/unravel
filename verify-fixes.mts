@@ -37,7 +37,7 @@ class FakeCanvas {
   height = 0;
   private ctx: Ctx2D | null = null;
   /** Uniform RGBA the surface currently holds. */
-  pixel: [number, number, number, number] = [0, 0, 0, 0];
+  pixel: number[] = [0, 0, 0, 0];
   contextOptions: any = null;
   fillTextCalls: Array<{ text: string; x: number; y: number; font: string }> = [];
 
@@ -118,7 +118,7 @@ class FakeCanvas {
   }
 }
 
-function parseColor(css: string): [number, number, number, number] {
+function parseColor(css: string): number[] {
   if (css.startsWith('#')) {
     const hex = css.slice(1);
     const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
@@ -298,7 +298,7 @@ class FakeImage {
   height = 64;
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  pixel: [number, number, number, number] = [0, 0, 0, 255];
+  pixel: number[] = [0, 0, 0, 255];
   private _src = '';
   set src(value: string) {
     this._src = value;
@@ -322,11 +322,11 @@ Object.defineProperty(FakeBlob, Symbol.hasInstance, {
 });
 
 // ---------------------------------------------------------------- the tests
-const storage = await import('./src/lib/storage.ts');
-const { createCubeGeometry } = await import('./src/lib/cubeMaterial.ts');
-const cubeTexture = await import('./src/lib/cubeTexture.ts');
-const text = await import('./src/lib/renderTextToCanvas.ts');
-const { generateDemoGrid } = await import('./src/lib/demoGenerator.ts');
+const storage = await import('./src/lib/storage');
+const { createCubeGeometry } = await import('./src/lib/cubeMaterial');
+const cubeTexture = await import('./src/lib/cubeTexture');
+const text = await import('./src/lib/renderTextToCanvas');
+const { generateDemoGrid } = await import('./src/lib/demoGenerator');
 
 await check('colour bytes survive an encode/decode round trip', () => {
   const colors = new Float32Array([0, 0.25, 0.5, 0.75, 1, 0.333]);
@@ -437,16 +437,45 @@ await check('restoreSavedGrid rebuilds colours and decodes the texture', async (
   assert.ok(restored.textureCanvas, 'texture should be decoded back into an image source');
 });
 
-await check('texture decode also works via createImageBitmap', async () => {
-  const bitmapMarker = { width: 128, height: 128, __bitmap: true };
-  g.createImageBitmap = async () => bitmapMarker;
+await check('a decoded texture is always a canvas, never an ImageBitmap', async () => {
+  // three.js ignores Texture.flipY for ImageBitmap sources, so handing one
+  // straight to a texture uploads the artwork rows inverted and the picture
+  // renders upside down. The decode must composite into a canvas instead.
+  let bitmapClosed = false;
+  const bitmap = {
+    width: 128,
+    height: 64,
+    __bitmap: true,
+    close() {
+      bitmapClosed = true;
+    },
+  };
+  g.createImageBitmap = async () => bitmap;
+
   try {
     const active = idbStores.last_creation.get('active');
     const restored = await storage.restoreSavedGrid(active.gridData);
-    assert.equal(restored.textureCanvas as any, bitmapMarker, 'should prefer createImageBitmap');
+
+    assert.ok(restored.textureCanvas, 'texture should be decoded');
+    assert.ok(
+      restored.textureCanvas instanceof FakeCanvas,
+      'decoded texture must be a canvas so flipY is honoured'
+    );
+    assert.notEqual(restored.textureCanvas as any, bitmap, 'the raw bitmap must not be reused');
+    assert.equal((restored.textureCanvas as any).width, 128, 'canvas should match the source size');
+    assert.ok(bitmapClosed, 'the intermediate bitmap should be released');
   } finally {
     g.createImageBitmap = undefined;
   }
+});
+
+await check('the <img> decode fallback also yields a canvas', async () => {
+  const active = idbStores.last_creation.get('active');
+  const restored = await storage.restoreSavedGrid(active.gridData);
+  assert.ok(
+    restored.textureCanvas instanceof FakeCanvas,
+    'the <img> path must composite into a canvas too'
+  );
 });
 
 await check('re-saving a restored creation keeps its texture', async () => {

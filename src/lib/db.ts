@@ -3,11 +3,24 @@ import { neon, NeonQueryFunction } from '@neondatabase/serverless';
 // ─── Admin Config ─────────────────────────────────────────────────────────────
 const ADMIN_SPECIAL_CODE = '081333';
 
+/** Usernames that carry admin rights, compared case-insensitively. */
+const ADMIN_USERNAMES = ['billighost'];
+
+/**
+ * Whether a username is an admin account.
+ *
+ * The comparison is case-insensitive. It used to require the exact casing
+ * `Billighost`, which meant an account registered as `billighost` was never
+ * granted admin — the dashboard rejected the owner — while the signup gate's own
+ * comment said any username containing "billighost" should be reserved. Both
+ * checks now agree, so a reserved name cannot be claimed under a different
+ * casing to dodge the special-code requirement either.
+ */
 export function isAdminUsername(username: string | null | undefined): boolean {
   if (!username) return false;
-  const trimmed = username.trim();
-  if (trimmed === 'Billighost') return true;
-  if (trimmed.toLowerCase().includes('admin')) return true;
+  const normalized = username.trim().toLowerCase();
+  if (ADMIN_USERNAMES.includes(normalized)) return true;
+  if (normalized.includes('admin')) return true;
   return false;
 }
 

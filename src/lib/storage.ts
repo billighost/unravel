@@ -195,32 +195,48 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
   });
 }
 
-/** Decodes a stored texture Blob into something three.js can upload directly. */
-async function blobToTextureSource(blob: Blob): Promise<ImageBitmap | HTMLImageElement | null> {
+/**
+ * Decodes a stored texture Blob into a canvas three.js can upload.
+ *
+ * Always a canvas, never the decoded ImageBitmap itself: three.js ignores
+ * `Texture.flipY` for image bitmaps (documented on ImageBitmapLoader), so a
+ * bitmap uploads with its rows inverted relative to the tile UV mapping and the
+ * artwork appears upside down. A canvas honours flipY on every browser, and the
+ * extra draw is a single one-off blit on restore.
+ */
+async function blobToTextureCanvas(blob: Blob): Promise<HTMLCanvasElement | null> {
+  let decoded: ImageBitmap | HTMLImageElement | null = null;
+
   try {
     if (typeof createImageBitmap === 'function') {
-      return await createImageBitmap(blob);
+      decoded = await createImageBitmap(blob);
     }
   } catch (_) {
     // Fall through to the <img> path below.
   }
 
-  const url = URL.createObjectURL(blob);
-  try {
-    const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error('Texture decode failed'));
-      img.src = url;
-    });
-    // decode() has resolved by the time onload fires, so the bitmap is safe to
-    // upload even though the object URL is revoked immediately after.
-    return img;
-  } catch (_) {
-    return null;
-  } finally {
-    URL.revokeObjectURL(url);
+  if (!decoded) {
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Texture decode failed'));
+        img.src = url;
+      });
+      decoded = img;
+    } catch (_) {
+      return null;
+    } finally {
+      // The bitmap is fully decoded by the time onload fires, so releasing the
+      // object URL here is safe.
+      URL.revokeObjectURL(url);
+    }
   }
+
+  const canvas = drawToCanvas(decoded);
+  if ('close' in decoded && typeof decoded.close === 'function') decoded.close();
+  return canvas;
 }
 
 /**
@@ -232,7 +248,7 @@ export async function restoreSavedGrid(grid: SavedGridData): Promise<SampledGrid
   const result = toSampledGridResult(grid);
 
   if (grid.texture instanceof Blob) {
-    const source = await blobToTextureSource(grid.texture);
+    const source = await blobToTextureCanvas(grid.texture);
     if (source) result.textureCanvas = source;
   }
 

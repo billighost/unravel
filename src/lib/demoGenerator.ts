@@ -12,10 +12,12 @@ export interface SampledGridResult {
    * own tile of this image, so the picture keeps full detail even though the
    * cube count is deliberately low (bigger cubes feel better to smash).
    *
-   * A canvas when freshly sampled; an ImageBitmap/HTMLImageElement when decoded
-   * back from a saved creation. Absent for procedural grids.
+   * Deliberately NOT an ImageBitmap: three.js ignores `Texture.flipY` for image
+   * bitmaps, so one uploads with its rows inverted relative to the UV mapping in
+   * cubeTexture.ts and the artwork renders upside down. Decoded bitmaps are
+   * drawn into a canvas before they get here (see storage.restoreSavedGrid).
    */
-  textureCanvas?: HTMLCanvasElement | ImageBitmap | HTMLImageElement;
+  textureCanvas?: HTMLCanvasElement | HTMLImageElement;
   /**
    * Tone-shaping profile the per-cube averages were produced with. Recorded so
    * the grid can be re-derived from `textureCanvas` at a different cube count

@@ -492,11 +492,13 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
     tileMaterialRef.current = tileMaterial;
 
     if (textureCanvas) {
-      // Texture rather than CanvasTexture: the source is a canvas when freshly
-      // sampled but an ImageBitmap/HTMLImageElement when decoded from a saved
-      // creation, and Texture accepts all three.
-      const texture = new THREE.Texture(textureCanvas as any);
+      // Texture rather than CanvasTexture so an <img> source works too. The
+      // source is never an ImageBitmap — three ignores flipY for those, which
+      // uploads the artwork rows inverted and renders the picture upside down
+      // (see the note on SampledGridResult.textureCanvas).
+      const texture = new THREE.Texture(textureCanvas);
       texture.needsUpdate = true;
+      texture.flipY = true;
       texture.colorSpace = THREE.SRGBColorSpace;
       // Clamp + linear filtering keeps tile edges clean without bleeding into
       // neighbouring tiles; no mipmaps since each tile is already at target size.

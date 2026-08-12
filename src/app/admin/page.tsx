@@ -277,7 +277,13 @@ export default function AdminPage() {
     const check = async () => {
       try {
         const deviceId = getDeviceId();
-        const res = await fetch('/api/accounts/me', { headers: { 'x-device-id': deviceId } });
+        // no-store: the session response carries a 60s Cache-Control, and
+        // serving a cached pre-login answer here bounces a freshly logged-in
+        // admin straight back to the home page.
+        const res = await fetch('/api/accounts/me', {
+          headers: { 'x-device-id': deviceId },
+          cache: 'no-store',
+        });
         const data = await res.json();
         if (!data.loggedIn || !data.isAdmin) {
           router.replace('/');

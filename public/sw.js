@@ -202,11 +202,23 @@ self.addEventListener('install', (event) => {
 // Activate: clean up old cache versions, keeping media and api caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
         keys.filter((key) => !ALLOWED_CACHES.includes(key)).map((key) => caches.delete(key))
       );
-    })
+
+      // Evict any API responses a previous version cached under the shell cache.
+      // Sessions were the casualty: a stale `{ loggedIn: false }` for
+      // /api/accounts/me survived every reload and locked admins out.
+      const shell = await caches.open(CACHE_NAME);
+      const stale = await shell.keys();
+      await Promise.all(
+        stale
+          .filter((request) => new URL(request.url).pathname.startsWith('/api/'))
+          .map((request) => shell.delete(request))
+      );
+    })()
   );
   self.clients.claim();
 });
@@ -392,6 +404,17 @@ self.addEventListener('fetch', (event) => {
         });
       })
     );
+    return;
+  }
+
+  // B2. Every other API route is network-only.
+  //
+  // Without this they fell through to the cache-first catch-all at the bottom,
+  // which is disastrous for session state: the first `/api/accounts/me` response
+  // (naturally `{ loggedIn: false }` before signing in) got cached and replayed
+  // forever, so logging in as admin still reported a logged-out session and the
+  // dashboard stayed locked. Auth and mutation state must always be live.
+  if (url.pathname.startsWith('/api/')) {
     return;
   }
 
