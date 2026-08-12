@@ -1,8 +1,13 @@
 /**
  * REDIS & MEMORY CACHING UTILITY
- * 
+ *
  * Provides centralized caching functions with Upstash Redis as the primary backend,
  * falling back to a thread-safe in-memory cache for local development/offline environments.
+ *
+ * Cache format version: v2
+ * All Redis keys are prefixed with KEY_PREFIX to allow clean invalidation of the v1
+ * format (which double-JSON-stringified values via an explicit JSON.stringify before
+ * the SDK's own serialisation step). v2 passes values directly to the SDK.
  */
 
 import { Redis } from '@upstash/redis';
@@ -19,7 +24,24 @@ if (url && token) {
   }
 }
 
-// In-Memory Fallback Cache for local/offline dev
+/**
+ * Key prefix for cache format version 2.
+ * Bumping this value invalidates all v1 keys without touching live traffic —
+ * the old keys simply expire naturally while new writes use the v2 namespace.
+ */
+const KEY_PREFIX = 'v2:';
+function prefixKey(key: string): string {
+  return KEY_PREFIX + key;
+}
+
+// ─── In-process gallery version cache ─────────────────────────────────────────
+// Caches the gallery version counter in the V8 isolate for 5 s so the vast
+// majority of gallery GET requests skip the Redis round-trip entirely. The
+// version only changes when a new public creation is posted, so a 5-second
+// stale reading is acceptable (the CDN already has a 30-second s-maxage anyway).
+let _galleryVersionCache: { val: number; expiresAt: number } | null = null;
+
+// ─── In-Memory Fallback Cache ──────────────────────────────────────────────────
 class MemoryCache {
   private store = new Map<string, { value: any; expiresAt: number }>();
 
@@ -56,9 +78,11 @@ const memoryCache = new MemoryCache();
 export async function getCache<T = any>(key: string): Promise<T | null> {
   if (redis) {
     try {
-      const data = await redis.get(key);
+      const data = await redis.get(prefixKey(key));
       if (data !== null && data !== undefined) {
-        return (typeof data === 'string' ? JSON.parse(data) : data) as T;
+        // v2: the Upstash SDK deserialises the stored value natively — no
+        // manual JSON.parse needed. Simply return the value as-is.
+        return data as T;
       }
       return null;
     } catch (err) {
@@ -69,10 +93,11 @@ export async function getCache<T = any>(key: string): Promise<T | null> {
 }
 
 export async function setCache(key: string, value: any, ttlSeconds: number): Promise<void> {
-  const stringifiedValue = JSON.stringify(value);
   if (redis) {
     try {
-      await redis.set(key, stringifiedValue, { ex: ttlSeconds });
+      // v2: pass the raw value; the Upstash SDK handles serialisation.
+      // Previously we called JSON.stringify here, causing a double-encode.
+      await redis.set(prefixKey(key), value, { ex: ttlSeconds });
       return;
     } catch (err) {
       console.warn('Redis set failed, using memory cache:', err);
@@ -84,7 +109,7 @@ export async function setCache(key: string, value: any, ttlSeconds: number): Pro
 export async function invalidateCache(key: string): Promise<void> {
   if (redis) {
     try {
-      await redis.del(key);
+      await redis.del(prefixKey(key));
       return;
     } catch (err) {
       console.warn('Redis del failed, using memory cache:', err);
@@ -94,21 +119,40 @@ export async function invalidateCache(key: string): Promise<void> {
 }
 
 export async function getGalleryVersion(): Promise<number> {
-  const key = 'cache:gallery_version';
+  // Serve from the in-process cache if still fresh — avoids a Redis RTT on
+  // every gallery GET (the single biggest latency win in the gallery route).
+  if (_galleryVersionCache && Date.now() < _galleryVersionCache.expiresAt) {
+    return _galleryVersionCache.val;
+  }
+
+  const key = prefixKey('cache:gallery_version');
+  let val = 0;
+
   if (redis) {
     try {
-      const val = await redis.get<any>(key);
-      if (val === null || val === undefined) return 0;
-      return typeof val === 'number' ? val : parseInt(val, 10) || 0;
+      const raw = await redis.get<any>(key);
+      if (raw !== null && raw !== undefined) {
+        val = typeof raw === 'number' ? raw : parseInt(raw, 10) || 0;
+      }
     } catch (err) {
       console.warn('Redis get gallery version failed:', err);
+      val = memoryCache.get('cache:gallery_version') || 0;
     }
+  } else {
+    val = memoryCache.get('cache:gallery_version') || 0;
   }
-  return memoryCache.get(key) || 0;
+
+  // Populate the in-process cache; expires in 5 s.
+  _galleryVersionCache = { val, expiresAt: Date.now() + 5_000 };
+  return val;
 }
 
 export async function incrementGalleryVersion(): Promise<void> {
-  const key = 'cache:gallery_version';
+  // Invalidate the in-process cache immediately so the next gallery request
+  // reads the freshly incremented version from Redis.
+  _galleryVersionCache = null;
+
+  const key = prefixKey('cache:gallery_version');
   if (redis) {
     try {
       await redis.incr(key);
@@ -117,5 +161,5 @@ export async function incrementGalleryVersion(): Promise<void> {
       console.warn('Redis incr gallery version failed:', err);
     }
   }
-  memoryCache.incr(key);
+  memoryCache.incr('cache:gallery_version');
 }

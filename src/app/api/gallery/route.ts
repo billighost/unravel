@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPublicGallery, getUserCreations, getAssociatedUsername } from '@/lib/db';
+import { getPublicGallery, getUserCreations } from '@/lib/db';
 import { Profiler } from '@/lib/profiler';
 import { getCache, setCache, getGalleryVersion } from '@/lib/cache';
 
@@ -28,10 +28,10 @@ export async function GET(req: NextRequest) {
 
     if (filter === 'my') {
       profiler.start('db', 'Database Query My Creations');
-      // The username is only needed to widen the "my creations" query beyond the
-      // current device, so it is resolved here rather than on the public path.
-      const username = await getAssociatedUsername(deviceId);
-      const items = await getUserCreations(deviceId, limit, offset, username);
+      // getUserCreations resolves the username via an inline SQL subquery when
+      // knownUsername is omitted — one fewer sequential DB round-trip vs. the
+      // old getAssociatedUsername() → getUserCreations() waterfall.
+      const items = await getUserCreations(deviceId, limit, offset);
       profiler.stop('db', 'Database Query My Creations');
 
       profiler.stop('total', 'Total Request Time');

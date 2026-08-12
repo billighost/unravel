@@ -167,17 +167,26 @@ if (process.env.NODE_ENV !== 'production') {
 /**
  * Returns the Neon SQL tagged-template client, or null if DATABASE_URL is not set.
  * When null, callers use the in-memory fallback store instead.
+ *
+ * The client is memoized at module level: on Edge runtimes the V8 isolate is
+ * reused across warm requests, so we pay the connection-string parse cost only
+ * once per isolate lifetime rather than on every function call.
  */
+let _sql: NeonQueryFunction<false, false> | null | undefined;
 function getSql(): NeonQueryFunction<false, false> | null {
+  if (_sql !== undefined) return _sql;
   const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) return null;
-
-  try {
-    return neon(connectionString);
-  } catch (err) {
-    console.warn('Failed to initialize Neon connection, falling back to memory store:', err);
+  if (!connectionString) {
+    _sql = null;
     return null;
   }
+  try {
+    _sql = neon(connectionString);
+  } catch (err) {
+    console.warn('Failed to initialize Neon connection, falling back to memory store:', err);
+    _sql = null;
+  }
+  return _sql;
 }
 
 // ─── Analytics Helpers ────────────────────────────────────────────────────────
@@ -431,9 +440,10 @@ export async function getUserCreations(
   knownUsername?: string | null
 ): Promise<CreationRecord[]> {
   const sql = getSql();
-  const username = knownUsername !== undefined ? knownUsername : await getAssociatedUsername(deviceId);
 
   if (!sql) {
+    // In-memory fallback: resolve username sequentially (dev/offline only).
+    const username = knownUsername !== undefined ? knownUsername : await getAssociatedUsername(deviceId);
     let list = Array.from(globalMemoryStore.creations.values())
       .filter((c) => !c.is_hidden && (c.device_id === deviceId || (username && c.username === username)))
       .sort((a, b) => {
@@ -449,21 +459,40 @@ export async function getUserCreations(
   }
 
   let rows;
-  if (username) {
-    rows = await sql`
-      SELECT id, device_id, created_at, thumbnail_url, source_mode, parent_creation_id, is_daily_challenge, report_count, is_hidden, is_public, view_count, username 
-      FROM creations 
-      WHERE is_hidden = FALSE 
-        AND (device_id = ${deviceId} OR username = ${username})
-      ORDER BY created_at DESC, id DESC 
-      LIMIT ${limit} OFFSET ${offset}
-    `;
+  if (knownUsername !== undefined) {
+    // Caller already resolved the username — use the explicit two-branch query.
+    if (knownUsername) {
+      rows = await sql`
+        SELECT id, device_id, created_at, thumbnail_url, source_mode, parent_creation_id, is_daily_challenge, report_count, is_hidden, is_public, view_count, username 
+        FROM creations 
+        WHERE is_hidden = FALSE 
+          AND (device_id = ${deviceId} OR username = ${knownUsername})
+        ORDER BY created_at DESC, id DESC 
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+    } else {
+      rows = await sql`
+        SELECT id, device_id, created_at, thumbnail_url, source_mode, parent_creation_id, is_daily_challenge, report_count, is_hidden, is_public, view_count, username 
+        FROM creations 
+        WHERE is_hidden = FALSE 
+          AND device_id = ${deviceId} AND username IS NULL
+        ORDER BY created_at DESC, id DESC 
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+    }
   } else {
+    // Username not provided — resolve via SQL subquery so the entire fetch is a
+    // single DB round-trip. The subquery hits the device_sessions primary-key
+    // index (O(1)) and costs essentially zero extra latency compared to a
+    // pre-fetched lookup, while saving a complete sequential round-trip.
     rows = await sql`
       SELECT id, device_id, created_at, thumbnail_url, source_mode, parent_creation_id, is_daily_challenge, report_count, is_hidden, is_public, view_count, username 
       FROM creations 
       WHERE is_hidden = FALSE 
-        AND device_id = ${deviceId} AND username IS NULL
+        AND (
+          device_id = ${deviceId}
+          OR username = (SELECT username FROM device_sessions WHERE device_id = ${deviceId} LIMIT 1)
+        )
       ORDER BY created_at DESC, id DESC 
       LIMIT ${limit} OFFSET ${offset}
     `;
@@ -883,6 +912,14 @@ export async function associateDeviceWithAccount(deviceId: string, username: str
 }
 
 export async function getAssociatedUsername(deviceId: string): Promise<string | null> {
+  // Check the session cache that the login flow already populates (TTL: 5 min).
+  // This turns most streak/daily-challenge calls into a fast in-process or Redis
+  // read instead of a round-trip to the Neon DB.
+  const { getCache, setCache } = await import('@/lib/cache');
+  const cacheKey = `session:${deviceId}`;
+  const cached = await getCache<string>(cacheKey);
+  if (cached) return cached;
+
   const sql = getSql();
 
   if (!sql) {
@@ -891,7 +928,10 @@ export async function getAssociatedUsername(deviceId: string): Promise<string | 
 
   const rows = await sql`SELECT username FROM device_sessions WHERE device_id = ${deviceId}`;
   if (rows.length === 0) return null;
-  return rows[0].username;
+  const username = rows[0].username as string | null;
+  // Warm the cache for future calls — same TTL as the one written at login.
+  if (username) setCache(cacheKey, username, 300).catch(() => {});
+  return username;
 }
 
 export async function removeDeviceAssociation(deviceId: string): Promise<void> {
