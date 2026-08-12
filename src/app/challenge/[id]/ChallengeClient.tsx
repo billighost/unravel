@@ -64,7 +64,32 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
       }
 
       const data = await res.json();
-      setCreation(data.creation);
+      const creationData = data.creation;
+
+      if (creationData && creationData.thumbnail_url) {
+        try {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.src = creationData.thumbnail_url;
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('Failed to load thumbnail'));
+          });
+          
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            creationData.textureCanvas = canvas;
+          }
+        } catch (err) {
+          console.warn('Could not load thumbnail as texture:', err);
+        }
+      }
+
+      setCreation(creationData);
       announceToScreenReader('Challenge loaded. Disturb picture and tap revert to reveal.');
 
       // The streak is credited on reveal completion only (see the
@@ -379,6 +404,7 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
     colors: typeof creation.grid_data.colors === 'string'
       ? decompressColors(creation.grid_data.colors)
       : new Float32Array(creation.grid_data.colors),
+    textureCanvas: creation.textureCanvas,
   };
 
   return (

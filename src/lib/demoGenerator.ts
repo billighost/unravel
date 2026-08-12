@@ -35,54 +35,60 @@ export function generateDemoGrid(targetColsOverride?: number, targetRowsOverride
   const config = qualityTierManager.getConfig();
   const tierMax = config.gridResolutionMax;
 
-  const targetCols = targetColsOverride || Math.round(tierMax * 0.75); // e.g. 60 for high, 45 for med, 30 for low
-  const targetRows = targetRowsOverride || Math.round(targetCols * 0.66); // e.g. 40 for high, 30 for med, 20 for low
+  const targetCols = targetColsOverride || Math.round(tierMax * 0.75);
+  const targetRows = targetRowsOverride || Math.round(targetCols * 0.66);
 
-  const total = targetCols * targetRows;
-  const colors = new Float32Array(total * 3);
-
-  for (let r = 0; r < targetRows; r++) {
-    for (let c = 0; c < targetCols; c++) {
-      const i3 = (r * targetCols + c) * 3;
-      const u = c / (targetCols - 1);
-      const v = r / (targetRows - 1);
-
-      // Gradient background + sun circle + grid line details
-      const distFromCenter = Math.hypot(u - 0.5, (v - 0.35) * 1.2);
-      const isSun = distFromCenter < 0.22;
-
-      let rCol: number, gCol: number, bCol: number;
-
-      if (isSun) {
-        // Bright yellow / orange sun
-        const sunGradient = (0.22 - distFromCenter) / 0.22;
-        rCol = 1.0;
-        gCol = 0.8 + sunGradient * 0.2;
-        bCol = 0.2;
-      } else if (v > 0.65) {
-        // Dark synthwave grid horizon
-        const horizonV = (v - 0.65) / 0.35;
-        const gridX = (c % 4 === 0) ? 1.0 : 0.0;
-        const gridY = Math.sin(horizonV * Math.PI * 6) > 0.8 ? 1.0 : 0.0;
-
-        rCol = 0.1 + gridX * 0.3 + gridY * 0.2;
-        gCol = 0.05 + gridX * 0.2;
-        bCol = 0.25 + horizonV * 0.5 + gridX * 0.4;
-      } else {
-        // Sunset sky (deep magenta to warm peach)
-        rCol = 0.95 - v * 0.5;
-        gCol = 0.25 + (1 - v) * 0.3;
-        bCol = 0.5 + (1 - v) * 0.3;
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    const canvasW = 1024;
+    const canvasH = Math.round(canvasW * (targetRows / targetCols));
+    canvas.width = canvasW;
+    canvas.height = canvasH;
+    const ctx = canvas.getContext('2d');
+    
+    if (ctx) {
+      const hue1 = Math.floor(Math.random() * 360);
+      const hue2 = (hue1 + 60 + Math.random() * 60) % 360; 
+      
+      const grad = ctx.createLinearGradient(0, 0, canvasW, canvasH);
+      grad.addColorStop(0, `hsl(${hue1}, 80%, 60%)`);
+      grad.addColorStop(1, `hsl(${hue2}, 80%, 40%)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvasW, canvasH);
+      
+      const textHue = (hue1 + 180) % 360;
+      ctx.fillStyle = `hsl(${textHue}, 100%, 95%)`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `bold ${Math.floor(canvasW * 0.15)}px "Pixelify Sans", monospace, sans-serif`;
+      ctx.fillText("UNRAVEL", canvasW / 2, canvasH / 2);
+      
+      const smallCanvas = document.createElement('canvas');
+      smallCanvas.width = targetCols;
+      smallCanvas.height = targetRows;
+      const smallCtx = smallCanvas.getContext('2d');
+      if (smallCtx) {
+        smallCtx.drawImage(canvas, 0, 0, targetCols, targetRows);
+        const data = smallCtx.getImageData(0, 0, targetCols, targetRows).data;
+        const total = targetCols * targetRows;
+        const colors = new Float32Array(total * 3);
+        for (let i = 0; i < total; i++) {
+          colors[i * 3] = data[i * 4] / 255;
+          colors[i * 3 + 1] = data[i * 4 + 1] / 255;
+          colors[i * 3 + 2] = data[i * 4 + 2] / 255;
+        }
+        return {
+          cols: targetCols,
+          rows: targetRows,
+          colors,
+          textureCanvas: canvas,
+        };
       }
-
-      // Add subtle retro pixel dithering
-      const dither = ((c % 2) ^ (r % 2)) * 0.03;
-      colors[i3] = Math.min(Math.max(rCol + dither, 0), 1);
-      colors[i3 + 1] = Math.min(Math.max(gCol + dither, 0), 1);
-      colors[i3 + 2] = Math.min(Math.max(bCol + dither, 0), 1);
     }
   }
 
+  const total = targetCols * targetRows;
+  const colors = new Float32Array(total * 3);
   return {
     cols: targetCols,
     rows: targetRows,
