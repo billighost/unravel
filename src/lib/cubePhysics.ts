@@ -478,8 +478,8 @@ export class CubePhysicsEngine {
 
       // Cubes slide outward mostly on the floor
       const centreBias = 1.35 - Math.min(dist / 3.0, 0.55);
-      const speed = (4.0 + Math.random() * 5.0) * centreBias * response;
-      const popZ = (0.2 + Math.random() * 0.8) * response;
+      const speed = (8.0 + Math.random() * 10.0) * centreBias * response;
+      const popZ = (0.6 + Math.random() * 1.4) * response;
 
       this.activateCube(i);
 
@@ -487,9 +487,9 @@ export class CubePhysicsEngine {
       velocities[i3 + 1] += vyDir * speed;
       velocities[i3 + 2] += popZ;
 
-      angularVelocities[i3] += (Math.random() - 0.5) * 14;
-      angularVelocities[i3 + 1] += (Math.random() - 0.5) * 14;
-      angularVelocities[i3 + 2] += (Math.random() - 0.5) * 14;
+      angularVelocities[i3] += (Math.random() - 0.5) * 22;
+      angularVelocities[i3 + 1] += (Math.random() - 0.5) * 22;
+      angularVelocities[i3 + 2] += (Math.random() - 0.5) * 22;
     }
 
     this.isDisturbed = true;
@@ -574,7 +574,7 @@ export class CubePhysicsEngine {
     // Air drag. Lighter than before so cubes carry momentum across the canvas
     // and actually reach each other — the old value killed motion in ~0.3s.
     const damping = Math.pow(sessionPhysicsConfig.friction, dt * 60);
-    const angularDamping = Math.pow(0.28, dt);
+    const angularDamping = Math.pow(0.18, dt);
     const restSpeedThreshold = this.restSpeedThreshold;
     const halfCube = this.renderedSize * 0.5;
 

@@ -16,11 +16,11 @@ export interface SessionPhysicsConfig {
 function createSessionConfig(): SessionPhysicsConfig {
   const seed = Math.random();
   return {
-    bounceDamping: 0.25 + seed * 0.15,      // [0.25 .. 0.40] - heavy wood doesn't bounce much
-    impulseResponse: 0.35 + Math.random() * 0.20, // [0.35 .. 0.55] - harder to move
-    friction: 0.82 + Math.random() * 0.06,        // [0.82 .. 0.88] - stops sliding much faster
-    materialRoughness: 0.70 + Math.random() * 0.20, // [0.70 .. 0.90] - wood is quite rough
-    materialMetalness: Math.random() * 0.05, // [0.00 .. 0.05] - wood is not metallic
+    bounceDamping: 0.18 + seed * 0.10,      // [0.18 .. 0.28] - heavy wood barely bounces
+    impulseResponse: 0.20 + Math.random() * 0.15, // [0.20 .. 0.35] - very heavy, hard to move
+    friction: 0.75 + Math.random() * 0.06,        // [0.75 .. 0.81] - stops sliding quickly
+    materialRoughness: 0.35 + Math.random() * 0.15, // [0.35 .. 0.50] - glossy wood finish
+    materialMetalness: 0.10 + Math.random() * 0.08, // [0.10 .. 0.18] - subtle lacquer sheen
   };
 }
 
