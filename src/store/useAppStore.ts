@@ -19,12 +19,14 @@ interface AppState {
   mode: AppMode;
   gridData: SampledGridResult;
   isDisturbed: boolean;
+  disturbedPositions: number[] | null;
   username: string | null;
   isAdmin: boolean;
   hasPromptedResume: boolean;
 
   setMode: (mode: AppMode) => void;
   setGridData: (gridData: SampledGridResult, sourceMode?: string, options?: SetGridDataOptions) => void;
+  setDisturbedPositions: (positions: number[] | null) => void;
   setIsDisturbed: (isDisturbed: boolean) => void;
   resetToDemo: () => void;
   setUsername: (username: string | null) => void;
@@ -36,6 +38,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mode: 'landing',
   gridData: generateDemoGrid(),
   isDisturbed: false,
+  disturbedPositions: null,
   username: null,
   isAdmin: false,
   hasPromptedResume: false,
@@ -48,6 +51,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       gridData,
       mode: 'canvas',
       isDisturbed: false,
+      disturbedPositions: null,
     });
 
     const shouldPersist = options?.persist !== false && sourceMode !== 'challenge';
@@ -62,6 +66,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  setDisturbedPositions: (disturbedPositions) => set({ disturbedPositions }),
+
   // Called from the render loop every frame, so bail out when nothing changed
   // rather than allocating a new state object and waking every subscriber 60
   // times a second.
@@ -75,6 +81,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       mode: 'landing',
       gridData: generateDemoGrid(),
       isDisturbed: false,
+      disturbedPositions: null,
     }),
 
   setUsername: (username) => set({ username }),

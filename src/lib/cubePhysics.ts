@@ -574,7 +574,7 @@ export class CubePhysicsEngine {
     // Air drag. Lighter than before so cubes carry momentum across the canvas
     // and actually reach each other — the old value killed motion in ~0.3s.
     const damping = Math.pow(sessionPhysicsConfig.friction, dt * 60);
-    const angularDamping = Math.pow(0.18, dt);
+    const angularDamping = Math.pow(0.35, dt);
     const restSpeedThreshold = this.restSpeedThreshold;
     const halfCube = this.renderedSize * 0.5;
 

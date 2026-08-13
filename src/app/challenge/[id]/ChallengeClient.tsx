@@ -172,15 +172,20 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
   useEffect(() => {
     if (!creation) return;
 
+    // Push disturbed positions into the store so CubeCanvas applies them
+    // during physics init — no polling, no flash of the original picture.
+    const disturbed = creation.disturbed_positions;
+    if (disturbed && disturbed.length > 0) {
+      useAppStore.getState().setDisturbedPositions(disturbed);
+    } else {
+      // No disturbed state means the picture is already revealed
+      setIsRevealed(true);
+    }
+
     const checkInterval = setInterval(() => {
       const physics = (window as any).__unravelPhysics;
       if (physics) {
         clearInterval(checkInterval);
-        if (creation.disturbed_positions && creation.disturbed_positions.length > 0) {
-          physics.restoreDisturbedState(creation.disturbed_positions);
-        } else {
-          setIsRevealed(true);
-        }
         setCanvasReady(true);
       }
     }, 100);

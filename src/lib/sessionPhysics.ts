@@ -16,9 +16,9 @@ export interface SessionPhysicsConfig {
 function createSessionConfig(): SessionPhysicsConfig {
   const seed = Math.random();
   return {
-    bounceDamping: 0.18 + seed * 0.10,      // [0.18 .. 0.28] - heavy wood barely bounces
-    impulseResponse: 0.20 + Math.random() * 0.15, // [0.20 .. 0.35] - very heavy, hard to move
-    friction: 0.75 + Math.random() * 0.06,        // [0.75 .. 0.81] - stops sliding quickly
+    bounceDamping: 0.50 + seed * 0.10,      // [0.50 .. 0.60] - bouncy wood thud
+    impulseResponse: 0.70 + Math.random() * 0.15, // [0.70 .. 0.85] - responsive, cubes fly
+    friction: 0.94 + Math.random() * 0.03,        // [0.94 .. 0.97] - cubes travel far
     materialRoughness: 0.35 + Math.random() * 0.15, // [0.35 .. 0.50] - glossy wood finish
     materialMetalness: 0.10 + Math.random() * 0.08, // [0.10 .. 0.18] - subtle lacquer sheen
   };

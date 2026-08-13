@@ -81,6 +81,7 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const gridData = useAppStore((state) => state.gridData);
   const mode = useAppStore((state) => state.mode);
+  const disturbedPositions = useAppStore((state) => state.disturbedPositions);
   const setIsDisturbed = useAppStore((state) => state.setIsDisturbed);
 
   const [isContextLost, setIsContextLost] = useState(false);
@@ -447,6 +448,14 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
     const physics = new CubePhysicsEngine(cols, rows, cubeSize, gap);
     physics.setRestSpeedThreshold(qualityConfig.restSpeedThreshold);
     physics.initFromData(cols, rows, colors, cubeSize, gap);
+
+    // Apply disturbed positions immediately so cubes appear in their
+    // scattered state from the very first frame — no flash of the original.
+    if (disturbedPositions && disturbedPositions.length > 0) {
+      physics.restoreDisturbedState(disturbedPositions);
+      setIsDisturbed(true);
+    }
+
     physicsRef.current = physics;
     (window as any).__unravelPhysics = physics;
 
@@ -529,7 +538,7 @@ export const CubeCanvas: React.FC<CubeCanvasProps> = ({ onExportReady }) => {
       window.removeEventListener('unravel-trigger-revert', handleRevertEvent);
       window.removeEventListener('unravel-trigger-disperse', handleDisperseEvent);
     };
-  }, [gridData, setIsDisturbed, qualityConfig.restSpeedThreshold]);
+  }, [gridData, disturbedPositions, setIsDisturbed, qualityConfig.restSpeedThreshold]);
 
   // Live cube-size changes.
   //
