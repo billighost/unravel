@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart2, Users, Flag, Eye, EyeOff, RefreshCw, Sparkles,
   TrendingUp, Hash, Flame, ShieldCheck, ArrowLeft, Check, X, Calendar,
-  Activity, Layers, Search, Download, Clock, ShieldAlert, Image as ImageIcon
+  Activity, Layers, Search, Download, Clock, ShieldAlert, Image as ImageIcon,
+  Smartphone, UserCheck, UserX
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { getDeviceId } from '@/lib/deviceId';
@@ -71,6 +72,15 @@ interface User {
   created_at: string;
   creation_count: number;
   current_streak: number;
+}
+
+interface DeviceRecord {
+  device_id: string;
+  username: string | null;
+  creation_count: number;
+  last_seen: string | null;
+  has_account: boolean;
+  associated_at: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -243,12 +253,16 @@ export default function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [devices, setDevices] = useState<DeviceRecord[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'daily' | 'users' | 'reports' | 'set-daily' | 'audit'>('overview');
+  const [usersSubTab, setUsersSubTab] = useState<'accounts' | 'devices'>('accounts');
 
   // Search & Filtering States for Users Tab
   const [userSearch, setUserSearch] = useState('');
   const [userSort, setUserSort] = useState<'newest' | 'oldest' | 'creations' | 'streak'>('newest');
+  const [deviceSearch, setDeviceSearch] = useState('');
 
   // Auto-refresh states
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -357,6 +371,20 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadDevices = useCallback(async () => {
+    setDevicesLoading(true);
+    try {
+      const deviceId = getDeviceId();
+      const res = await fetch('/api/admin/devices', { headers: { 'x-device-id': deviceId } });
+      const data = await res.json();
+      if (data.devices) setDevices(data.devices);
+    } catch {
+      showToast("Couldn't load devices", 'error');
+    } finally {
+      setDevicesLoading(false);
+    }
+  }, []);
+
   const loadGallery = useCallback(async () => {
     setGalleryLoading(true);
     try {
@@ -378,10 +406,11 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!checkingAuth && isAdmin) {
-      if (activeTab === 'users') loadUsers();
+      if (activeTab === 'users' && usersSubTab === 'accounts') loadUsers();
+      if (activeTab === 'users' && usersSubTab === 'devices') loadDevices();
       if (activeTab === 'set-daily') loadGallery();
     }
-  }, [activeTab, checkingAuth, isAdmin, loadUsers, loadGallery]);
+  }, [activeTab, usersSubTab, checkingAuth, isAdmin, loadUsers, loadDevices, loadGallery]);
 
   // ── Auto-Refresh Countdown ──────────────────────────────────────────────────
   useEffect(() => {
@@ -523,6 +552,38 @@ export default function AdminPage() {
     showToast(`Exported user list to ${format.toUpperCase()}`, 'success');
   };
 
+  const exportDevices = (format: 'csv' | 'json') => {
+    if (devices.length === 0) return;
+    if (format === 'json') {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(devices, null, 2));
+      const a = document.createElement('a');
+      a.setAttribute("href", dataStr);
+      a.setAttribute("download", `unravel_devices_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } else {
+      const headers = ['device_id', 'username', 'has_account', 'creation_count', 'last_seen', 'associated_at'];
+      const rows = devices.map(d => [
+        d.device_id,
+        d.username ?? '',
+        d.has_account,
+        d.creation_count,
+        d.last_seen ?? '',
+        d.associated_at ?? '',
+      ].map(val => `"${val}"`).join(','));
+      const csvContent = [headers.join(','), ...rows].join('\n');
+      const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
+      const a = document.createElement('a');
+      a.setAttribute("href", dataStr);
+      a.setAttribute("download", `unravel_devices_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    showToast(`Exported device list to ${format.toUpperCase()}`, 'success');
+  };
+
   const exportActivity = (format: 'csv' | 'json') => {
     const data = analytics?.daily_activity;
     if (!data || data.length === 0) return;
@@ -583,6 +644,13 @@ export default function AdminPage() {
       if (userSort === 'streak') return b.current_streak - a.current_streak;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); // default: newest
     });
+
+  const filteredDevices = devices.filter(d => {
+    const q = deviceSearch.toLowerCase();
+    return d.device_id.toLowerCase().includes(q) || (d.username ?? '').toLowerCase().includes(q);
+  });
+  const devicesWithAccount = devices.filter(d => d.has_account).length;
+  const devicesAnon = devices.length - devicesWithAccount;
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg)', color: 'var(--ink)' }}>
@@ -834,10 +902,50 @@ export default function AdminPage() {
           {/* USERS TAB */}
           {activeTab === 'users' && (
             <motion.div key="users" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.12 }}>
+              {/* Sub-tab switcher */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                <button
+                  id="admin-subtab-accounts"
+                  onClick={() => setUsersSubTab('accounts')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.55rem 1.1rem', fontSize: '0.72rem',
+                    fontFamily: 'var(--font-heading)',
+                    backgroundColor: usersSubTab === 'accounts' ? 'var(--ink)' : 'var(--surface)',
+                    color: usersSubTab === 'accounts' ? '#FFF' : 'var(--ink)',
+                    border: '3px solid var(--ink)',
+                    boxShadow: usersSubTab === 'accounts' ? 'none' : '3px 3px 0 var(--ink)',
+                    cursor: 'pointer',
+                    transition: 'all 0.1s ease',
+                  }}
+                >
+                  <Users size={14} /> ACCOUNTS ({users.length})
+                </button>
+                <button
+                  id="admin-subtab-devices"
+                  onClick={() => setUsersSubTab('devices')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.55rem 1.1rem', fontSize: '0.72rem',
+                    fontFamily: 'var(--font-heading)',
+                    backgroundColor: usersSubTab === 'devices' ? 'var(--ink)' : 'var(--surface)',
+                    color: usersSubTab === 'devices' ? '#FFF' : 'var(--ink)',
+                    border: '3px solid var(--ink)',
+                    boxShadow: usersSubTab === 'devices' ? 'none' : '3px 3px 0 var(--ink)',
+                    cursor: 'pointer',
+                    transition: 'all 0.1s ease',
+                  }}
+                >
+                  <Smartphone size={14} /> DEVICES ({devices.length || '…'})
+                </button>
+              </div>
+
+              {/* ── ACCOUNTS SUB-TAB ── */}
+              {usersSubTab === 'accounts' && (
               <div style={{ backgroundColor: 'var(--surface)', border: '3px solid var(--ink)', boxShadow: '4px 4px 0 var(--ink)', padding: '1.25rem' }}>
                 <SectionHeader
                   icon={<Users size={18} />}
-                  title={`REGISTERED USERS (${users.length})`}
+                  title={`REGISTERED ACCOUNTS (${users.length})`}
                   action={
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <button onClick={() => exportUsers('csv')} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', border: '2px solid var(--ink)', backgroundColor: 'var(--bg)', padding: '0.3rem 0.5rem', fontSize: '0.65rem', fontFamily: 'var(--font-heading)', cursor: 'pointer' }}>
@@ -852,7 +960,6 @@ export default function AdminPage() {
 
                 {/* Filter and Search Bar */}
                 <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-                  {/* Search box */}
                   <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', border: '2px solid var(--ink)', padding: '0.4rem 0.65rem', backgroundColor: 'var(--bg)' }}>
                     <Search size={14} color="var(--text-secondary)" style={{ marginRight: '0.4rem' }} />
                     <input
@@ -863,7 +970,6 @@ export default function AdminPage() {
                       style={{ border: 'none', backgroundColor: 'transparent', width: '100%', fontSize: '0.75rem', outline: 'none', fontFamily: 'var(--font-body)', color: 'var(--ink)' }}
                     />
                   </div>
-                  {/* Sorting dropdown */}
                   <div style={{ display: 'flex', alignItems: 'center', border: '2px solid var(--ink)', backgroundColor: 'var(--surface)', padding: '0 0.5rem' }}>
                     <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', marginRight: '0.4rem', fontWeight: 'bold' }}>SORT BY:</span>
                     <select
@@ -885,7 +991,6 @@ export default function AdminPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {/* Header row */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr auto auto', gap: '0.5rem', padding: '0.4rem 0.5rem', borderBottom: '2px solid var(--border)' }}>
                       {['USERNAME', 'REGISTERED', 'WORKS', 'STREAK'].map(h => (
                         <span key={h} className="font-heading" style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{h}</span>
@@ -905,6 +1010,114 @@ export default function AdminPage() {
                   </div>
                 )}
               </div>
+              )}
+
+              {/* ── DEVICES SUB-TAB ── */}
+              {usersSubTab === 'devices' && (
+              <div style={{ backgroundColor: 'var(--surface)', border: '3px solid var(--ink)', boxShadow: '4px 4px 0 var(--ink)', padding: '1.25rem' }}>
+                <SectionHeader
+                  icon={<Smartphone size={18} />}
+                  title={`ALL DEVICES — ESTIMATED REACH`}
+                  action={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <button onClick={() => exportDevices('csv')} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', border: '2px solid var(--ink)', backgroundColor: 'var(--bg)', padding: '0.3rem 0.5rem', fontSize: '0.65rem', fontFamily: 'var(--font-heading)', cursor: 'pointer' }}>
+                        <Download size={11} /> CSV
+                      </button>
+                      <button onClick={() => exportDevices('json')} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', border: '2px solid var(--ink)', backgroundColor: 'var(--bg)', padding: '0.3rem 0.5rem', fontSize: '0.65rem', fontFamily: 'var(--font-heading)', cursor: 'pointer' }}>
+                        <Download size={11} /> JSON
+                      </button>
+                    </div>
+                  }
+                />
+
+                {/* Summary stat chips */}
+                {devices.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: 'var(--bg)', border: '2px solid var(--ink)', padding: '0.4rem 0.75rem', fontSize: '0.72rem', fontFamily: 'var(--font-heading)' }}>
+                      <Smartphone size={13} /> {devices.length} TOTAL DEVICES
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: 'var(--bg)', border: '2px solid #34C759', padding: '0.4rem 0.75rem', fontSize: '0.72rem', fontFamily: 'var(--font-heading)', color: '#34C759' }}>
+                      <UserCheck size={13} /> {devicesWithAccount} WITH ACCOUNT
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: 'var(--bg)', border: '2px solid var(--border)', padding: '0.4rem 0.75rem', fontSize: '0.72rem', fontFamily: 'var(--font-heading)', color: 'var(--text-secondary)' }}>
+                      <UserX size={13} /> {devicesAnon} ANONYMOUS
+                    </div>
+                  </div>
+                )}
+
+                {/* Search */}
+                <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', border: '2px solid var(--ink)', padding: '0.4rem 0.65rem', backgroundColor: 'var(--bg)' }}>
+                    <Search size={14} color="var(--text-secondary)" style={{ marginRight: '0.4rem' }} />
+                    <input
+                      type="text"
+                      placeholder="Filter by device ID or username…"
+                      value={deviceSearch}
+                      onChange={e => setDeviceSearch(e.target.value)}
+                      style={{ border: 'none', backgroundColor: 'transparent', width: '100%', fontSize: '0.75rem', outline: 'none', fontFamily: 'var(--font-body)', color: 'var(--ink)' }}
+                    />
+                  </div>
+                </div>
+
+                {devicesLoading ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: '2.5rem' }}><BrandLoader size={36} /></div>
+                ) : filteredDevices.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', fontSize: '0.85rem', border: '2px dashed var(--border)' }}>
+                    {devices.length === 0 ? 'No devices recorded yet.' : 'No devices match your filter.'}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {/* Header */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr auto auto', gap: '0.5rem', padding: '0.4rem 0.5rem', borderBottom: '2px solid var(--border)' }}>
+                      {['DEVICE ID', 'ACCOUNT / STATUS', 'WORKS', 'LAST SEEN'].map(h => (
+                        <span key={h} className="font-heading" style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{h}</span>
+                      ))}
+                    </div>
+                    {filteredDevices.map(d => (
+                      <div
+                        key={d.device_id}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '2fr 1.2fr auto auto',
+                          gap: '0.5rem', padding: '0.5rem',
+                          backgroundColor: d.has_account ? 'rgba(52,199,89,0.04)' : 'var(--bg)',
+                          border: `2px solid ${d.has_account ? '#34C759' : 'var(--border)'}`,
+                          alignItems: 'center',
+                        }}
+                      >
+                        {/* Device ID — truncated with full on title */}
+                        <span
+                          title={d.device_id}
+                          style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: 'var(--ink)', wordBreak: 'break-all', lineHeight: 1.3 }}
+                        >
+                          {d.device_id.length > 22 ? d.device_id.slice(0, 10) + '…' + d.device_id.slice(-8) : d.device_id}
+                        </span>
+
+                        {/* Account badge */}
+                        {d.has_account ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <UserCheck size={12} color="#34C759" />
+                            <span className="font-heading" style={{ fontSize: '0.72rem', color: '#34C759', textTransform: 'none', wordBreak: 'break-all' }}>{d.username}</span>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <UserX size={12} color="var(--text-secondary)" />
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)' }}>Anonymous</span>
+                          </div>
+                        )}
+
+                        {/* Creation count */}
+                        <span className="font-heading" style={{ fontSize: '0.8rem', color: 'var(--ink)', textAlign: 'center' }}>{d.creation_count}</span>
+
+                        {/* Last seen */}
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-body)', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {d.last_seen ? new Date(d.last_seen).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              )}
             </motion.div>
           )}
 

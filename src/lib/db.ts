@@ -1161,6 +1161,79 @@ export async function adminListUsers(limit = 50, offset = 0): Promise<Array<{ us
   });
 }
 
+export interface DeviceRecord {
+  device_id: string;
+  username: string | null;
+  creation_count: number;
+  last_seen: string | null; // ISO date of most recent creation
+  has_account: boolean;
+  associated_at: string | null; // when they linked an account
+}
+
+/**
+ * Returns every distinct device seen in the DB (union of creations + device_sessions),
+ * giving an estimate of total unique users including anonymous (no-account) ones.
+ */
+export async function adminListDevices(limit = 200, offset = 0): Promise<DeviceRecord[]> {
+  const sql = getSql();
+
+  if (!sql) {
+    // In-memory fallback
+    const deviceIds = new Set<string>();
+    for (const c of globalMemoryStore.creations.values()) deviceIds.add(c.device_id);
+    for (const [did] of globalMemoryStore.deviceSessions) deviceIds.add(did);
+
+    return Array.from(deviceIds)
+      .slice(offset, offset + limit)
+      .map(did => {
+        const username = globalMemoryStore.deviceSessions.get(did) || null;
+        const creations = Array.from(globalMemoryStore.creations.values()).filter(c => c.device_id === did);
+        const lastSeen = creations.length > 0
+          ? creations.sort((a, b) => b.created_at.localeCompare(a.created_at))[0].created_at
+          : null;
+        return {
+          device_id: did,
+          username,
+          creation_count: creations.length,
+          last_seen: lastSeen,
+          has_account: !!username,
+          associated_at: null,
+        };
+      });
+  }
+
+  // One query: union all device_ids from creations + device_sessions, join to sessions
+  // for username and creation counts, ordered by most recently active first.
+  const rows = await sql`
+    SELECT
+      d.device_id,
+      ds.username,
+      ds.associated_at,
+      COUNT(c.id)::int              AS creation_count,
+      MAX(c.created_at)             AS last_seen,
+      (ds.username IS NOT NULL)     AS has_account
+    FROM (
+      SELECT DISTINCT device_id FROM creations
+      UNION
+      SELECT DISTINCT device_id FROM device_sessions
+    ) AS d
+    LEFT JOIN device_sessions ds ON ds.device_id = d.device_id
+    LEFT JOIN creations c        ON c.device_id = d.device_id
+    GROUP BY d.device_id, ds.username, ds.associated_at
+    ORDER BY last_seen DESC NULLS LAST, d.device_id
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+
+  return rows.map((r: any) => ({
+    device_id: r.device_id,
+    username: r.username ?? null,
+    creation_count: Number(r.creation_count),
+    last_seen: r.last_seen ?? null,
+    has_account: Boolean(r.has_account),
+    associated_at: r.associated_at ?? null,
+  }));
+}
+
 export async function adminToggleCreationVisibility(id: string, hidden: boolean): Promise<void> {
   const sql = getSql();
 
