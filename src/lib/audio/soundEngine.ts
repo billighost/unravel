@@ -213,8 +213,8 @@ class SoundEngine {
     const level = (0.1 + intensity * 0.45) * (0.65 + density * 0.35);
 
     // Layer 1 — body. Pitch-dropping sine gives the "thunk" weight. Bigger
-    // pile-ups ring lower, which reads as mass.
-    const bodyFreq = (character === 'scrape' ? 150 : 210) * (1.25 - density * 0.4) + intensity * 90;
+    // pile-ups ring lower, which reads as mass. For heavy wood, the base frequency is quite low.
+    const bodyFreq = (character === 'scrape' ? 90 : 120) * (1.25 - density * 0.4) + intensity * 60;
     const body = ctx.createOscillator();
     const bodyGain = ctx.createGain();
     body.type = 'sine';
@@ -230,10 +230,11 @@ class SoundEngine {
 
     // Layer 2 — attack click. A short triangle burst supplies the hard edge
     // that makes the hit feel like a solid object rather than a soft blob.
+    // For wood, this click is deeper and less pronounced.
     const click = ctx.createOscillator();
     const clickGain = ctx.createGain();
     click.type = 'triangle';
-    const clickFreq = 620 + intensity * 900 + (Math.random() - 0.5) * 120;
+    const clickFreq = 400 + intensity * 400 + (Math.random() - 0.5) * 80;
     click.frequency.setValueAtTime(clickFreq, now);
     click.frequency.exponentialRampToValueAtTime(clickFreq * 0.45, now + 0.03);
     clickGain.gain.setValueAtTime(0, now);
@@ -253,8 +254,9 @@ class SoundEngine {
 
       const noiseFilter = ctx.createBiquadFilter();
       noiseFilter.type = 'bandpass';
+      // Duller, lower-frequency noise burst for wood scraping/knocking
       noiseFilter.frequency.setValueAtTime(
-        character === 'scrape' ? 1800 + intensity * 2500 : 950 + intensity * 1800,
+        character === 'scrape' ? 1200 + intensity * 1000 : 500 + intensity * 600,
         now
       );
       noiseFilter.Q.value = character === 'scrape' ? 0.7 : 1.5;

@@ -367,7 +367,7 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
     }
   };
 
-  if (loading || !canvasReady) {
+  if (loading) {
     return (
       <div style={{ width: '100%', height: 'var(--app-height)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg)', gap: '1rem' }}>
         <BrandLoader size={44} />
@@ -420,6 +420,13 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
 
       {/* 3D WebGL Canvas */}
       <CubeCanvas />
+
+      {!canvasReady && (
+        <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg)', gap: '1rem', zIndex: 50 }}>
+          <BrandLoader size={44} />
+          <p className="font-heading" style={{ fontSize: '1rem', color: 'var(--ink)' }}>LOADING PICTURE...</p>
+        </div>
+      )}
 
       {/* UI Overlay */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '1rem', zIndex: 10 }}>
