@@ -67,25 +67,46 @@ export default function ChallengeClient({ id }: ChallengeClientProps) {
       const creationData = data.creation;
 
       if (creationData && creationData.thumbnail_url) {
-        try {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.src = creationData.thumbnail_url;
-          await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error('Failed to load thumbnail'));
-          });
-          
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            creationData.textureCanvas = canvas;
+        let attempts = 0;
+        let loaded = false;
+        const isDataUrl = creationData.thumbnail_url.startsWith('data:');
+        const maxAttempts = isDataUrl ? 1 : 3;
+
+        while (attempts < maxAttempts && !loaded) {
+          try {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            
+            let src = creationData.thumbnail_url;
+            if (!isDataUrl && attempts > 0) {
+              const separator = src.includes('?') ? '&' : '?';
+              src = `${src}${separator}retry=${attempts}`;
+            }
+            
+            img.src = src;
+            await new Promise<void>((resolve, reject) => {
+              img.onload = () => resolve();
+              img.onerror = () => reject(new Error('Failed to load thumbnail'));
+            });
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0);
+              creationData.textureCanvas = canvas;
+            }
+            loaded = true;
+          } catch (err) {
+            attempts++;
+            if (attempts >= maxAttempts) {
+              console.warn('Could not load thumbnail as texture after retries:', err);
+              throw new Error('Failed to load artwork image.');
+            }
+            // wait before retrying (500ms, 1000ms)
+            await new Promise(r => setTimeout(r, attempts * 500));
           }
-        } catch (err) {
-          console.warn('Could not load thumbnail as texture:', err);
         }
       }
 
